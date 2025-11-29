@@ -1,4 +1,5 @@
 import client from './client';
+import type { User } from '../types';
 
 export interface LoginRequest {
   username: string;
@@ -7,12 +8,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
-  user: {
-    id: number;
-    username: string;
-    created_at: string;
-    updated_at: string;
-  };
+  user: User;
 }
 
 export interface ChangePasswordRequest {
