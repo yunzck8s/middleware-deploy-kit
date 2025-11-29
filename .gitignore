@@ -1,0 +1,39 @@
+# 离线包文件
+*.tar.gz
+*.zip
+
+# 各中间件的离线依赖目录
+nginx/libs/
+redis/repo/
+openssh_auto_install_10.0p2/libs/
+
+# 运行时数据（未来 Web 平台使用）
+backend/data/packages/
+backend/data/certificates/
+backend/data/logs/
+backend/data/*.db
+
+# Go
+backend/bin/
+backend/vendor/
+
+# React
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+/tmp/
