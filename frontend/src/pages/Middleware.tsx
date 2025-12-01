@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -29,7 +30,15 @@ import type { MiddlewarePackage } from '../types';
 const { Dragger } = Upload;
 const { Option } = Select;
 
+// 中间件类型映射
+const MIDDLEWARE_TYPE_MAP: Record<string, { name: string; displayName: string }> = {
+  nginx: { name: 'nginx', displayName: 'Nginx' },
+  redis: { name: 'redis', displayName: 'Redis' },
+  openssh: { name: 'openssh', displayName: 'OpenSSH' },
+};
+
 const Middleware: React.FC = () => {
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [packages, setPackages] = useState<MiddlewarePackage[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,11 +49,27 @@ const Middleware: React.FC = () => {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [form] = Form.useForm();
 
-  // 加载离线包列表
+  // 从路由中获取中间件类型
+  const getMiddlewareType = (): string => {
+    const path = location.pathname;
+    if (path.includes('/nginx/')) return 'nginx';
+    if (path.includes('/redis/')) return 'redis';
+    if (path.includes('/openssh/')) return 'openssh';
+    return 'nginx'; // 默认
+  };
+
+  const middlewareType = getMiddlewareType();
+  const middlewareInfo = MIDDLEWARE_TYPE_MAP[middlewareType];
+
+  // 加载离线包列表（根据类型过滤）
   const loadPackages = async () => {
     try {
       setLoading(true);
-      const response = await getPackageList({ page, page_size: pageSize });
+      const response = await getPackageList({
+        name: middlewareType, // 根据当前中间件类型过滤
+        page,
+        page_size: pageSize,
+      });
       setPackages(response.packages);
       setTotal(response.total);
     } catch (error: any) {
@@ -56,7 +81,7 @@ const Middleware: React.FC = () => {
 
   useEffect(() => {
     loadPackages();
-  }, [page, pageSize]);
+  }, [page, pageSize, middlewareType]);
 
   // 处理上传
   const handleUpload = async (values: any) => {
@@ -69,9 +94,10 @@ const Middleware: React.FC = () => {
       setUploading(true);
       await uploadPackage({
         ...values,
+        name: middlewareType, // 自动使用当前中间件类型
         file: fileList[0].originFileObj as File,
       });
-      message.success('离线包上传成功');
+      message.success(`${middlewareInfo.displayName} 离线包上传成功`);
       setUploadModalVisible(false);
       form.resetFields();
       setFileList([]);
@@ -176,7 +202,7 @@ const Middleware: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <Card
-            title="中间件离线包管理"
+            title={`${middlewareInfo.displayName} 离线包管理`}
             extra={
               <Space>
                 <Button icon={<ReloadOutlined />} onClick={loadPackages}>
@@ -215,7 +241,7 @@ const Middleware: React.FC = () => {
 
       {/* 上传离线包对话框 */}
       <Modal
-        title="上传离线包"
+        title={`上传 ${middlewareInfo.displayName} 离线包`}
         open={uploadModalVisible}
         onCancel={() => {
           setUploadModalVisible(false);
@@ -227,18 +253,6 @@ const Middleware: React.FC = () => {
         width={600}
       >
         <Form form={form} layout="vertical" onFinish={handleUpload}>
-          <Form.Item
-            label="中间件类型"
-            name="name"
-            rules={[{ required: true, message: '请选择中间件类型' }]}
-          >
-            <Select placeholder="请选择">
-              <Option value="nginx">Nginx</Option>
-              <Option value="redis">Redis</Option>
-              <Option value="openssh">OpenSSH</Option>
-            </Select>
-          </Form.Item>
-
           <Form.Item
             label="版本号"
             name="version"

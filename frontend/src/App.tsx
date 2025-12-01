@@ -40,6 +40,14 @@ function App() {
             <Route path="middleware/nginx/certificates" element={<Certificates />} />
             <Route path="middleware/nginx/configs" element={<NginxConfig />} />
             <Route path="middleware/nginx/deployments" element={<Deployments />} />
+
+            {/* Redis 管理 */}
+            <Route path="middleware/redis/packages" element={<Middleware />} />
+            <Route path="middleware/redis/deployments" element={<Deployments />} />
+
+            {/* OpenSSH 管理 */}
+            <Route path="middleware/openssh/packages" element={<Middleware />} />
+            <Route path="middleware/openssh/deployments" element={<Deployments />} />
           </Route>
         </Routes>
       </BrowserRouter>

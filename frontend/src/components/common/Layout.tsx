@@ -40,17 +40,32 @@ const MainLayout = () => {
       breadcrumbs.push({ title: '仪表盘', path: '/' });
     } else if (pathname === '/servers') {
       breadcrumbs.push({ title: '服务器管理', path: '/servers' });
-    } else if (pathname.startsWith('/middleware/nginx')) {
+    } else if (pathname.startsWith('/middleware/')) {
       breadcrumbs.push({ title: '中间件管理', path: '' });
-      breadcrumbs.push({ title: 'Nginx', path: '' });
-      if (pathname.includes('/packages')) {
-        breadcrumbs.push({ title: '离线包', path: pathname });
-      } else if (pathname.includes('/certificates')) {
-        breadcrumbs.push({ title: 'SSL证书', path: pathname });
-      } else if (pathname.includes('/configs')) {
-        breadcrumbs.push({ title: '配置管理', path: pathname });
-      } else if (pathname.includes('/deployments')) {
-        breadcrumbs.push({ title: '部署管理', path: pathname });
+
+      // 判断中间件类型
+      let middlewareName = '';
+      if (pathname.includes('/nginx/')) {
+        middlewareName = 'Nginx';
+      } else if (pathname.includes('/redis/')) {
+        middlewareName = 'Redis';
+      } else if (pathname.includes('/openssh/')) {
+        middlewareName = 'OpenSSH';
+      }
+
+      if (middlewareName) {
+        breadcrumbs.push({ title: middlewareName, path: '' });
+
+        // 判断功能模块
+        if (pathname.includes('/packages')) {
+          breadcrumbs.push({ title: '离线包管理', path: pathname });
+        } else if (pathname.includes('/certificates')) {
+          breadcrumbs.push({ title: 'SSL证书', path: pathname });
+        } else if (pathname.includes('/configs')) {
+          breadcrumbs.push({ title: '配置管理', path: pathname });
+        } else if (pathname.includes('/deployments')) {
+          breadcrumbs.push({ title: '部署管理', path: pathname });
+        }
       }
     }
 
@@ -92,7 +107,7 @@ const MainLayout = () => {
             {
               key: '/middleware/nginx/packages',
               icon: <InboxOutlined />,
-              label: '离线包',
+              label: '离线包管理',
             },
             {
               key: '/middleware/nginx/certificates',
@@ -106,6 +121,40 @@ const MainLayout = () => {
             },
             {
               key: '/middleware/nginx/deployments',
+              icon: <RocketOutlined />,
+              label: '部署管理',
+            },
+          ],
+        },
+        {
+          key: 'redis-group',
+          label: 'Redis',
+          type: 'group',
+          children: [
+            {
+              key: '/middleware/redis/packages',
+              icon: <InboxOutlined />,
+              label: '离线包管理',
+            },
+            {
+              key: '/middleware/redis/deployments',
+              icon: <RocketOutlined />,
+              label: '部署管理',
+            },
+          ],
+        },
+        {
+          key: 'openssh-group',
+          label: 'OpenSSH',
+          type: 'group',
+          children: [
+            {
+              key: '/middleware/openssh/packages',
+              icon: <InboxOutlined />,
+              label: '离线包管理',
+            },
+            {
+              key: '/middleware/openssh/deployments',
               icon: <RocketOutlined />,
               label: '部署管理',
             },
