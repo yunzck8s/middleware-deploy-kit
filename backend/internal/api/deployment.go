@@ -491,6 +491,18 @@ func (a *DeploymentAPI) deployNginxConfig(client *ssh.Client, sftpClient *sftp.C
 		(*step)++
 	}
 
+	// 确保目标目录存在且有写权限
+	a.addLog(deployment.ID, *step, "准备目标目录", "")
+	dir := filepath.Dir(deployment.TargetPath)
+	mkdirCmd := fmt.Sprintf("mkdir -p %s && chmod 755 %s", dir, dir)
+	output, err := a.runCommand(client, mkdirCmd)
+	if err != nil {
+		a.updateLog(deployment.ID, *step, "failed", output, err.Error())
+		return fmt.Errorf("创建目录失败: %v", err)
+	}
+	a.updateLog(deployment.ID, *step, "success", fmt.Sprintf("目录已就绪: %s", dir), "")
+	(*step)++
+
 	// 上传配置文件
 	a.addLog(deployment.ID, *step, "上传配置文件", "")
 	if err := a.uploadContent(sftpClient, deployment.TargetPath, []byte(content)); err != nil {
@@ -502,7 +514,7 @@ func (a *DeploymentAPI) deployNginxConfig(client *ssh.Client, sftpClient *sftp.C
 
 	// 测试配置
 	a.addLog(deployment.ID, *step, "测试 Nginx 配置", "")
-	output, err := a.runCommand(client, "nginx -t 2>&1")
+	output, err = a.runCommand(client, "nginx -t 2>&1")
 	if err != nil {
 		a.updateLog(deployment.ID, *step, "failed", output, err.Error())
 		return fmt.Errorf("配置测试失败: %v", err)
@@ -515,7 +527,7 @@ func (a *DeploymentAPI) deployNginxConfig(client *ssh.Client, sftpClient *sftp.C
 		a.addLog(deployment.ID, *step, "重启服务", "")
 		reloadCmd := fmt.Sprintf("systemctl reload %s 2>&1 || systemctl restart %s 2>&1",
 			deployment.ServiceName, deployment.ServiceName)
-		output, err := a.runCommand(client, reloadCmd)
+		output, err = a.runCommand(client, reloadCmd)
 		if err != nil {
 			a.updateLog(deployment.ID, *step, "failed", output, err.Error())
 			return fmt.Errorf("服务重启失败: %v", err)
@@ -699,7 +711,7 @@ func (a *DeploymentAPI) deployCertificate(client *ssh.Client, sftpClient *sftp.C
 		a.addLog(deployment.ID, *step, "重启服务", "")
 		reloadCmd := fmt.Sprintf("systemctl reload %s 2>&1 || systemctl restart %s 2>&1",
 			deployment.ServiceName, deployment.ServiceName)
-		output, err := a.runCommand(client, reloadCmd)
+		output, err = a.runCommand(client, reloadCmd)
 		if err != nil {
 			a.updateLog(deployment.ID, *step, "failed", output, err.Error())
 			return fmt.Errorf("服务重启失败: %v", err)
@@ -757,20 +769,26 @@ func (a *DeploymentAPI) runCommand(client *ssh.Client, cmd string) (string, erro
 
 // uploadContent 上传内容到远程文件
 func (a *DeploymentAPI) uploadContent(sftpClient *sftp.Client, remotePath string, content []byte) error {
-	// 确保目录存在
+	// 确保目录存在（通过 SFTP）
 	dir := filepath.Dir(remotePath)
 	if err := sftpClient.MkdirAll(dir); err != nil {
 		logger.Warnf("创建目录 %s 失败（可能已存在）: %v", dir, err)
 	}
 
+	// 尝试创建文件
 	file, err := sftpClient.Create(remotePath)
 	if err != nil {
-		return err
+		// 如果创建失败，可能是权限问题，返回更详细的错误
+		return fmt.Errorf("创建文件 %s 失败，可能是权限不足或磁盘已满: %v", remotePath, err)
 	}
 	defer file.Close()
 
-	_, err = file.Write(content)
-	return err
+	// 写入内容
+	if _, err = file.Write(content); err != nil {
+		return fmt.Errorf("写入文件内容失败: %v", err)
+	}
+
+	return nil
 }
 
 // uploadFile 上传本地文件到远程
@@ -982,7 +1000,7 @@ func (a *DeploymentAPI) executeRollback(rollbackDeployment, originalDeployment *
 		a.addLog(rollbackDeployment.ID, step, "重启服务", "")
 		reloadCmd := fmt.Sprintf("systemctl reload %s 2>&1 || systemctl restart %s 2>&1",
 			rollbackDeployment.ServiceName, rollbackDeployment.ServiceName)
-		output, err := a.runCommand(client, reloadCmd)
+		output, err = a.runCommand(client, reloadCmd)
 		if err != nil {
 			a.updateLog(rollbackDeployment.ID, step, "failed", output, err.Error())
 			finalErr = fmt.Errorf("服务重启失败: %v", err)
