@@ -1,0 +1,106 @@
+{
+  "name": "nginx",
+  "version": "1.28.0",
+  "display_name": "Nginx Web Server",
+  "description": "Nginx 1.28.0 离线编译安装包，支持 SSL、Gzip、反向代理等企业级功能",
+  "install_script": "auto_install_nginx.sh",
+  "supported_os": [
+    {
+      "type": "rocky",
+      "versions": ["9.4"]
+    },
+    {
+      "type": "centos",
+      "versions": ["7.9"]
+    },
+    {
+      "type": "openEuler",
+      "versions": ["22.03"]
+    },
+    {
+      "type": "kylin",
+      "versions": ["V10-SP3"]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "NGINX_INSTALL_DIR",
+      "label": "安装目录",
+      "description": "Nginx 安装的目标目录",
+      "type": "string",
+      "default": "/usr/local/nginx",
+      "required": false,
+      "placeholder": "/usr/local/nginx"
+    },
+    {
+      "name": "NGINX_HTTP_PORT",
+      "label": "HTTP 端口",
+      "description": "HTTP 服务监听端口",
+      "type": "number",
+      "default": 80,
+      "required": false,
+      "min": 1,
+      "max": 65535
+    },
+    {
+      "name": "NGINX_HTTPS_PORT",
+      "label": "HTTPS 端口",
+      "description": "HTTPS 服务监听端口",
+      "type": "number",
+      "default": 443,
+      "required": false,
+      "min": 1,
+      "max": 65535
+    },
+    {
+      "name": "NGINX_USER",
+      "label": "运行用户",
+      "description": "Nginx 进程运行用户",
+      "type": "string",
+      "default": "nginx",
+      "required": false
+    },
+    {
+      "name": "NGINX_WORKER_PROCESSES",
+      "label": "Worker 进程数",
+      "description": "Nginx worker 进程数量，建议设置为 CPU 核心数",
+      "type": "number",
+      "default": 4,
+      "required": false,
+      "min": 1,
+      "max": 128
+    },
+    {
+      "name": "NGINX_WORKER_CONNECTIONS",
+      "label": "Worker 连接数",
+      "description": "每个 worker 进程的最大连接数",
+      "type": "number",
+      "default": 1024,
+      "required": false,
+      "min": 512,
+      "max": 65535
+    },
+    {
+      "name": "ENABLE_SSL",
+      "label": "启用 SSL",
+      "description": "是否启用 HTTPS 支持",
+      "type": "boolean",
+      "default": true,
+      "required": false
+    }
+  ],
+  "features": [
+    "HTTP/HTTPS 支持",
+    "SSL/TLS 加密",
+    "Gzip 压缩",
+    "反向代理",
+    "负载均衡",
+    "静态文件服务",
+    "日志轮转"
+  ],
+  "requirements": {
+    "disk_space": "500MB",
+    "memory": "1GB",
+    "root_required": true
+  }
+}

@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Layout as AntLayout, Menu, Dropdown, Avatar, message } from 'antd';
+import { Layout as AntLayout, Menu, Dropdown, Avatar, message, Breadcrumb } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
   SafetyCertificateOutlined,
-  GlobalOutlined,
   CloudServerOutlined,
   RocketOutlined,
-  HistoryOutlined,
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
+  InboxOutlined,
+  FileTextOutlined,
+  HomeOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { logout as logoutAction } from '../../store/authSlice';
@@ -22,10 +24,38 @@ const { Header, Sider, Content } = AntLayout;
 
 const MainLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [openKeys, setOpenKeys] = useState<string[]>(['middleware', 'deployments']);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
   const { user } = useAuth();
+
+  // 获取面包屑路径
+  const getBreadcrumbs = (pathname: string) => {
+    const breadcrumbs: Array<{ title: React.ReactNode; path: string }> = [
+      { title: <HomeOutlined />, path: '/' }
+    ];
+
+    if (pathname === '/') {
+      breadcrumbs.push({ title: '仪表盘', path: '/' });
+    } else if (pathname === '/servers') {
+      breadcrumbs.push({ title: '服务器管理', path: '/servers' });
+    } else if (pathname.startsWith('/middleware/nginx')) {
+      breadcrumbs.push({ title: '中间件管理', path: '' });
+      breadcrumbs.push({ title: 'Nginx', path: '' });
+      if (pathname.includes('/packages')) {
+        breadcrumbs.push({ title: '离线包', path: pathname });
+      } else if (pathname.includes('/certificates')) {
+        breadcrumbs.push({ title: 'SSL证书', path: pathname });
+      } else if (pathname.includes('/configs')) {
+        breadcrumbs.push({ title: '配置管理', path: pathname });
+      } else if (pathname.includes('/deployments')) {
+        breadcrumbs.push({ title: '部署管理', path: pathname });
+      }
+    }
+
+    return breadcrumbs;
+  };
 
   const handleLogout = async () => {
     try {
@@ -38,26 +68,11 @@ const MainLayout = () => {
     }
   };
 
-  const menuItems = [
+  const menuItems: MenuProps['items'] = [
     {
       key: '/',
       icon: <DashboardOutlined />,
       label: '仪表盘',
-    },
-    {
-      key: '/middleware',
-      icon: <AppstoreOutlined />,
-      label: '中间件管理',
-    },
-    {
-      key: '/certificates',
-      icon: <SafetyCertificateOutlined />,
-      label: '证书管理',
-    },
-    {
-      key: '/nginx',
-      icon: <GlobalOutlined />,
-      label: 'Nginx 配置',
     },
     {
       key: '/servers',
@@ -65,14 +80,38 @@ const MainLayout = () => {
       label: '服务器管理',
     },
     {
-      key: '/deployments',
-      icon: <RocketOutlined />,
-      label: '部署管理',
-    },
-    {
-      key: '/history',
-      icon: <HistoryOutlined />,
-      label: '部署历史',
+      key: 'middleware',
+      icon: <AppstoreOutlined />,
+      label: '中间件管理',
+      children: [
+        {
+          key: 'nginx-group',
+          label: 'Nginx',
+          type: 'group',
+          children: [
+            {
+              key: '/middleware/nginx/packages',
+              icon: <InboxOutlined />,
+              label: '离线包',
+            },
+            {
+              key: '/middleware/nginx/certificates',
+              icon: <SafetyCertificateOutlined />,
+              label: 'SSL证书',
+            },
+            {
+              key: '/middleware/nginx/configs',
+              icon: <FileTextOutlined />,
+              label: '配置管理',
+            },
+            {
+              key: '/middleware/nginx/deployments',
+              icon: <RocketOutlined />,
+              label: '部署管理',
+            },
+          ],
+        },
+      ],
     },
   ];
 
@@ -126,9 +165,16 @@ const MainLayout = () => {
         <Menu
           theme="dark"
           selectedKeys={[location.pathname]}
+          openKeys={openKeys}
+          onOpenChange={setOpenKeys}
           mode="inline"
           items={menuItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => {
+            // 只有点击具体路径才跳转（不是分组标题）
+            if (key.startsWith('/')) {
+              navigate(key);
+            }
+          }}
         />
       </Sider>
       <AntLayout>
@@ -161,12 +207,30 @@ const MainLayout = () => {
         <Content
           style={{
             margin: '24px 16px',
-            padding: 24,
-            background: '#fff',
-            borderRadius: 8,
           }}
         >
-          <Outlet />
+          {location.pathname !== '/' && (
+            <Breadcrumb
+              style={{
+                marginBottom: 16,
+              }}
+              items={getBreadcrumbs(location.pathname).map((item) => ({
+                title: item.title,
+                onClick: item.path ? () => navigate(item.path) : undefined,
+                style: item.path ? { cursor: 'pointer' } : undefined,
+              }))}
+            />
+          )}
+          <div
+            style={{
+              padding: 24,
+              background: '#fff',
+              borderRadius: 8,
+              minHeight: 'calc(100vh - 160px)',
+            }}
+          >
+            <Outlet />
+          </div>
         </Content>
       </AntLayout>
     </AntLayout>

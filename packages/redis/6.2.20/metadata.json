@@ -1,0 +1,102 @@
+{
+  "name": "redis",
+  "version": "6.2.20",
+  "display_name": "Redis 6.2.20",
+  "description": "Redis 6.2.20 离线安装包，包含完整的离线依赖",
+  "supported_os": [
+    "rocky-9.4",
+    "centos-7.9",
+    "openEuler-22.03"
+  ],
+  "install_script": "install_redis_offline.sh",
+  "parameters": [
+    {
+      "name": "REDIS_INSTALL_DIR",
+      "label": "安装目录",
+      "type": "string",
+      "default": "/usr/local/redis",
+      "required": false,
+      "description": "Redis 安装目录路径",
+      "placeholder": "/usr/local/redis"
+    },
+    {
+      "name": "REDIS_PORT",
+      "label": "监听端口",
+      "type": "number",
+      "default": 6379,
+      "required": false,
+      "description": "Redis 服务监听端口",
+      "validation": {
+        "min": 1,
+        "max": 65535,
+        "message": "端口号必须在 1-65535 之间"
+      }
+    },
+    {
+      "name": "REDIS_BIND",
+      "label": "绑定地址",
+      "type": "string",
+      "default": "127.0.0.1",
+      "required": false,
+      "description": "Redis 绑定的 IP 地址（0.0.0.0 表示所有地址）",
+      "placeholder": "127.0.0.1"
+    },
+    {
+      "name": "REDIS_PASSWORD",
+      "label": "认证密码",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "description": "Redis 访问密码（留空表示不设置密码）",
+      "placeholder": "留空或设置强密码"
+    },
+    {
+      "name": "REDIS_MAXMEMORY",
+      "label": "最大内存",
+      "type": "string",
+      "default": "2gb",
+      "required": false,
+      "description": "Redis 最大使用内存（如 1gb、512mb）",
+      "placeholder": "2gb"
+    },
+    {
+      "name": "REDIS_DATA_DIR",
+      "label": "数据目录",
+      "type": "string",
+      "default": "/var/lib/redis",
+      "required": false,
+      "description": "Redis 数据存储目录",
+      "placeholder": "/var/lib/redis"
+    },
+    {
+      "name": "REDIS_LOG_DIR",
+      "label": "日志目录",
+      "type": "string",
+      "default": "/var/log/redis",
+      "required": false,
+      "description": "Redis 日志存储目录",
+      "placeholder": "/var/log/redis"
+    },
+    {
+      "name": "ENABLE_AOF",
+      "label": "启用 AOF 持久化",
+      "type": "boolean",
+      "default": true,
+      "required": false,
+      "description": "是否启用 AOF（Append Only File）持久化"
+    }
+  ],
+  "features": [
+    "Redis 6.2.20 稳定版本",
+    "支持多种操作系统",
+    "完整的离线依赖包",
+    "自动创建 systemd 服务",
+    "支持 AOF 和 RDB 持久化"
+  ],
+  "requirements": {
+    "min_memory": "1GB",
+    "min_disk": "500MB",
+    "ports": [6379],
+    "dependencies": ["gcc", "make", "tcl"]
+  }
+}

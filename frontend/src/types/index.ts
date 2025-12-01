@@ -27,3 +27,202 @@ export interface PaginationResponse<T> {
   page: number;
   page_size: number;
 }
+
+// 中间件离线包
+export interface MiddlewarePackage {
+  id: number;
+  name: string;                    // nginx, redis, openssh
+  version: string;                 // 版本号
+  display_name: string;            // 显示名称
+  description: string;             // 描述
+  file_name: string;               // 原始文件名
+  file_path: string;               // 存储路径
+  file_size: number;               // 文件大小（字节）
+  file_hash: string;               // SHA256 哈希
+  os_type: string;                 // rocky, centos, openEuler
+  os_version: string;              // 9.4, 7.9
+  status: 'active' | 'deleted';    // 状态
+  uploaded_at: string;             // 上传时间
+  metadata?: string;               // JSON 扩展元数据
+  created_at: string;
+  updated_at: string;
+}
+
+// SSL 证书
+export interface Certificate {
+  id: number;
+  name: string;                           // 证书名称
+  domain: string;                         // 域名
+  cert_file_path: string;                 // .crt 文件路径
+  key_file_path: string;                  // .key 文件路径
+  valid_from: string;                     // 有效期开始
+  valid_until: string;                    // 有效期结束
+  issuer: string;                         // 颁发者
+  subject: string;                        // 主题
+  status: 'active' | 'expired' | 'deleted';  // 状态
+  created_at: string;
+  updated_at: string;
+}
+
+// 服务器
+export interface Server {
+  id: number;
+  name: string;                                    // 服务器名称
+  host: string;                                    // 主机地址
+  port: number;                                    // SSH 端口
+  username: string;                                // SSH 用户名
+  auth_type: 'password' | 'key';                   // 认证方式
+  os_type: string;                                 // 操作系统类型
+  os_version: string;                              // 操作系统版本
+  description: string;                             // 描述
+  tags: string;                                    // 标签（JSON）
+  status: 'online' | 'offline' | 'unknown';        // 状态
+  last_check_at: string | null;                    // 最后检查时间
+  last_check_msg: string;                          // 最后检查消息
+  created_at: string;
+  updated_at: string;
+}
+
+// SSH 连接测试结果
+export interface SSHTestResult {
+  success: boolean;
+  message: string;
+  latency_ms: number;
+  os_info: string;
+  os_type?: string;
+  os_version?: string;
+  server?: Server;
+}
+
+// Nginx 配置
+export interface NginxConfig {
+  id: number;
+  name: string;
+  description: string;
+  server_id?: number;
+  worker_processes: string;
+  worker_connections: number;
+  enable_http: boolean;
+  http_port: number;
+  enable_https: boolean;
+  https_port: number;
+  certificate_id?: number;
+  http_to_https: boolean;
+  server_name: string;
+  root_path: string;
+  index_files: string;
+  access_log_path: string;
+  error_log_path: string;
+  log_format: 'main' | 'json';
+  enable_proxy: boolean;
+  proxy_pass: string;
+  client_max_body_size: string;
+  gzip: boolean;
+  custom_config: string;
+  status: 'draft' | 'active' | 'disabled';
+  created_at: string;
+  updated_at: string;
+  server?: Server;
+  certificate?: Certificate;
+}
+
+// 部署类型
+export type DeploymentType = 'nginx_config' | 'package' | 'certificate';
+
+// 部署状态
+export type DeploymentStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+
+// 部署任务
+export interface Deployment {
+  id: number;
+  name: string;
+  description: string;
+  type: DeploymentType;
+  server_id: number;
+  status: DeploymentStatus;
+  nginx_config_id?: number;
+  package_id?: number;
+  certificate_id?: number;
+  target_path: string;
+  backup_enabled: boolean;
+  backup_path: string;
+  restart_service: boolean;
+  service_name: string;
+  deploy_params?: string;         // JSON 格式的部署参数
+  started_at?: string;
+  completed_at?: string;
+  duration: number;
+  error_msg: string;
+  can_rollback: boolean;
+  rolled_back_from?: number;
+  server?: Server;
+  nginx_config?: NginxConfig;
+  package?: MiddlewarePackage;
+  certificate?: Certificate;
+  logs?: DeploymentLog[];
+  created_at: string;
+  updated_at: string;
+}
+
+// 部署日志
+export interface DeploymentLog {
+  id: number;
+  deployment_id: number;
+  step: number;
+  action: string;
+  status: 'running' | 'success' | 'failed' | 'skipped';
+  output: string;
+  error_msg: string;
+  duration: number;
+  created_at: string;
+}
+
+// 离线包参数验证规则
+export interface ParameterValidation {
+  min?: number;
+  max?: number;
+  min_len?: number;
+  max_len?: number;
+  pattern?: string;
+  message?: string;
+}
+
+// 离线包参数选项
+export interface ParameterOption {
+  label: string;
+  value: string | number | boolean;
+}
+
+// 离线包参数定义
+export interface PackageParameter {
+  name: string;                    // 参数名（环境变量名）
+  label: string;                   // 显示标签
+  type: 'string' | 'number' | 'boolean' | 'select';  // 参数类型
+  default?: string | number | boolean;  // 默认值
+  required?: boolean;              // 是否必填
+  description?: string;            // 参数说明
+  placeholder?: string;            // 占位符
+  options?: ParameterOption[];     // 选项（type=select时使用）
+  validation?: ParameterValidation; // 验证规则
+}
+
+// 系统要求
+export interface PackageRequirements {
+  min_memory?: string;             // 最小内存（如 "512MB", "1GB"）
+  min_disk?: string;               // 最小磁盘（如 "100MB"）
+  ports?: number[];                // 需要的端口列表
+  dependencies?: string[];         // 依赖的系统包
+}
+
+// 离线包元数据
+export interface PackageMetadata {
+  name: string;                    // 包名称
+  version: string;                 // 版本号
+  display_name: string;            // 显示名称
+  description: string;             // 描述
+  supported_os: string[];          // 支持的操作系统
+  install_script: string;          // 安装脚本名称
+  parameters: PackageParameter[];  // 可配置参数列表
+  features?: string[];             // 功能特性
+  requirements?: PackageRequirements; // 系统要求
+}

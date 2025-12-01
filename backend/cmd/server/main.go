@@ -83,21 +83,92 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 		}
 	}
 
+	// 离线包管理 API
+	packageAPI := api.NewPackageAPI(cfg)
+	packages := v1.Group("/packages")
+	packages.Use(api.AuthMiddleware(cfg))
+	{
+		packages.POST("", packageAPI.Upload)                // 上传离线包
+		packages.GET("", packageAPI.List)                   // 获取离线包列表
+		packages.GET("/:id", packageAPI.Get)                // 获取离线包详情
+		packages.GET("/:id/metadata", packageAPI.GetMetadata) // 获取离线包元数据
+		packages.DELETE("/:id", packageAPI.Delete)          // 删除离线包
+	}
+
+	// 证书管理 API
+	certAPI := api.NewCertificateAPI(cfg)
+	certificates := v1.Group("/certificates")
+	certificates.Use(api.AuthMiddleware(cfg))
+	{
+		certificates.POST("", certAPI.Upload)                  // 上传证书
+		certificates.GET("", certAPI.List)                     // 获取证书列表
+		certificates.GET("/:id", certAPI.Get)                  // 获取证书详情
+		certificates.GET("/:id/download", certAPI.Download)    // 下载证书文件
+		certificates.DELETE("/:id", certAPI.Delete)            // 删除证书
+	}
+
+	// 服务器管理 API
+	serverAPI := api.NewServerAPI(cfg)
+	servers := v1.Group("/servers")
+	servers.Use(api.AuthMiddleware(cfg))
+	{
+		servers.POST("", serverAPI.Create)                       // 创建服务器
+		servers.GET("", serverAPI.List)                          // 获取服务器列表
+		servers.GET("/:id", serverAPI.Get)                       // 获取服务器详情
+		servers.PUT("/:id", serverAPI.Update)                    // 更新服务器
+		servers.DELETE("/:id", serverAPI.Delete)                 // 删除服务器
+		servers.POST("/:id/test", serverAPI.TestConnection)      // 测试已保存服务器连接
+		servers.POST("/test", serverAPI.TestConnectionDirect)    // 直接测试连接（不保存）
+	}
+
+	// Nginx 配置 API
+	nginxAPI := api.NewNginxAPI(cfg)
+	nginx := v1.Group("/nginx")
+	nginx.Use(api.AuthMiddleware(cfg))
+	{
+		nginx.POST("", nginxAPI.Create)                // 创建 Nginx 配置
+		nginx.GET("", nginxAPI.List)                   // 获取配置列表
+		nginx.GET("/:id", nginxAPI.Get)                // 获取配置详情
+		nginx.PUT("/:id", nginxAPI.Update)             // 更新配置
+		nginx.DELETE("/:id", nginxAPI.Delete)          // 删除配置
+		nginx.GET("/:id/generate", nginxAPI.Generate)  // 生成配置文件
+		nginx.POST("/preview", nginxAPI.Preview)       // 预览配置（不保存）
+	}
+
+	// 部署管理 API
+	deploymentAPI := api.NewDeploymentAPI(cfg)
+	deployments := v1.Group("/deployments")
+	deployments.Use(api.AuthMiddleware(cfg))
+	{
+		deployments.POST("", deploymentAPI.Create)                    // 创建部署任务
+		deployments.POST("/batch", deploymentAPI.BatchCreate)         // 批量创建部署任务
+		deployments.GET("", deploymentAPI.List)                       // 获取部署任务列表
+		deployments.GET("/:id", deploymentAPI.Get)                    // 获取部署任务详情
+		deployments.DELETE("/:id", deploymentAPI.Delete)              // 删除部署任务
+		deployments.POST("/:id/execute", deploymentAPI.Execute)       // 执行部署任务
+		deployments.POST("/:id/rollback", deploymentAPI.Rollback)     // 回滚部署
+		deployments.GET("/:id/logs", deploymentAPI.GetLogs)           // 获取部署日志
+	}
+
+	// 部署脚本管理 API
+	scriptAPI := api.NewDeploymentScriptAPI(cfg)
+	scripts := v1.Group("/scripts")
+	scripts.Use(api.AuthMiddleware(cfg))
+	{
+		scripts.POST("", scriptAPI.Create)         // 创建脚本模板
+		scripts.GET("", scriptAPI.List)            // 获取脚本模板列表
+		scripts.GET("/:id", scriptAPI.Get)         // 获取脚本模板详情
+		scripts.PUT("/:id", scriptAPI.Update)      // 更新脚本模板
+		scripts.DELETE("/:id", scriptAPI.Delete)   // 删除脚本模板
+	}
+
 	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status": "ok",
+			"status":  "ok",
 			"message": "服务运行正常",
 		})
 	})
-
-	// 后续添加其他API路由
-	// - 离线包管理
-	// - 证书管理
-	// - Nginx配置
-	// - 服务器管理
-	// - 部署管理
-	// - 部署历史
 }
 
 // ensureDataDirs 确保数据目录存在
@@ -106,6 +177,7 @@ func ensureDataDirs(cfg *config.Config) {
 		cfg.Data.Packages,
 		cfg.Data.Certificates,
 		cfg.Data.Logs,
+		cfg.Data.UploadDir,
 		filepath.Dir(cfg.Database.DSN),
 	}
 

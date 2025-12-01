@@ -35,6 +35,7 @@ type DataConfig struct {
 	Packages     string
 	Certificates string
 	Logs         string
+	UploadDir    string
 }
 
 // NewConfig 创建默认配置
@@ -56,6 +57,7 @@ func NewConfig() *Config {
 			Packages:     "./data/packages",
 			Certificates: "./data/certificates",
 			Logs:         "./data/logs",
+			UploadDir:    "./data/uploads",
 		},
 	}
 }

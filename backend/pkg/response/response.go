@@ -74,6 +74,16 @@ func NotFound(c *gin.Context, message string) {
 	Error(c, http.StatusNotFound, message)
 }
 
+// Conflict 409 错误
+func Conflict(c *gin.Context, message string) {
+	Error(c, http.StatusConflict, message)
+}
+
+// ConflictWithData 409 错误（带数据）
+func ConflictWithData(c *gin.Context, message string, data interface{}) {
+	ErrorWithData(c, http.StatusConflict, message, data)
+}
+
 // InternalServerError 500 错误
 func InternalServerError(c *gin.Context, message string) {
 	Error(c, http.StatusInternalServerError, message)

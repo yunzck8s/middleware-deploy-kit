@@ -1,0 +1,79 @@
+{
+  "name": "openssh",
+  "version": "10.0p2",
+  "display_name": "OpenSSH 10.0p2",
+  "description": "OpenSSH 10.0p2 离线安装包，包含服务端和客户端",
+  "supported_os": [
+    "rocky-9.4",
+    "openEuler-22.03"
+  ],
+  "install_script": "install_repo.sh",
+  "parameters": [
+    {
+      "name": "SSH_PORT",
+      "label": "SSH 端口",
+      "type": "number",
+      "default": 22,
+      "required": false,
+      "description": "SSH 服务监听端口",
+      "validation": {
+        "min": 1,
+        "max": 65535,
+        "message": "端口号必须在 1-65535 之间"
+      }
+    },
+    {
+      "name": "PERMIT_ROOT_LOGIN",
+      "label": "允许 Root 登录",
+      "type": "select",
+      "default": "prohibit-password",
+      "required": false,
+      "description": "是否允许 root 用户通过 SSH 登录",
+      "options": [
+        {
+          "label": "禁止密码登录（仅密钥）",
+          "value": "prohibit-password"
+        },
+        {
+          "label": "允许",
+          "value": "yes"
+        },
+        {
+          "label": "禁止",
+          "value": "no"
+        }
+      ]
+    },
+    {
+      "name": "PASSWORD_AUTHENTICATION",
+      "label": "密码认证",
+      "type": "select",
+      "default": "yes",
+      "required": false,
+      "description": "是否启用密码认证",
+      "options": [
+        {
+          "label": "启用",
+          "value": "yes"
+        },
+        {
+          "label": "禁用",
+          "value": "no"
+        }
+      ]
+    }
+  ],
+  "features": [
+    "OpenSSH 10.0p2 最新版本",
+    "支持 Rocky Linux 9.4",
+    "支持 openEuler 22.03",
+    "自动备份旧配置",
+    "离线依赖包完整"
+  ],
+  "requirements": {
+    "min_memory": "512MB",
+    "min_disk": "200MB",
+    "ports": [22],
+    "dependencies": ["gcc", "make", "zlib-devel", "pam-devel", "openssl-devel"]
+  }
+}

@@ -46,7 +46,18 @@ func Init(cfg *config.Config) error {
 func AutoMigrate() error {
 	return DB.AutoMigrate(
 		&models.User{},
-		// 后续添加其他模型
+		&models.MiddlewarePackage{},
+		&models.Certificate{},
+		&models.Server{},
+		&models.ServerGroup{},
+		&models.ServerGroupMapping{},
+		&models.NginxConfig{},
+		&models.NginxLocation{},
+		&models.NginxUpstream{},
+		&models.Deployment{},
+		&models.DeploymentLog{},
+		&models.DeploymentScript{},
+		&models.DeploymentHook{},
 	)
 }
 
