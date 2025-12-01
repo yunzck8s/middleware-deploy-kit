@@ -15,11 +15,27 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 设置变量
+# 设置变量（优先从环境变量读取，否则使用默认值）
 NGINX_VERSION="1.28.0"
 NGINX_TAR="nginx-${NGINX_VERSION}.tar.gz"
-NGINX_INSTALL_DIR="/usr/local/nginx"
+NGINX_INSTALL_DIR="${NGINX_INSTALL_DIR:-/usr/local/nginx}"
+NGINX_HTTP_PORT="${NGINX_HTTP_PORT:-80}"
+NGINX_HTTPS_PORT="${NGINX_HTTPS_PORT:-443}"
+NGINX_USER="${NGINX_USER:-nginx}"
+NGINX_WORKER_PROCESSES="${NGINX_WORKER_PROCESSES:-auto}"
+NGINX_WORKER_CONNECTIONS="${NGINX_WORKER_CONNECTIONS:-1024}"
+ENABLE_SSL="${ENABLE_SSL:-true}"
 PACKAGE_DIR="package"
+
+# 打印配置信息
+print_info "部署配置:"
+print_info "  安装目录: $NGINX_INSTALL_DIR"
+print_info "  HTTP 端口: $NGINX_HTTP_PORT"
+print_info "  HTTPS 端口: $NGINX_HTTPS_PORT"
+print_info "  运行用户: $NGINX_USER"
+print_info "  Worker 进程数: $NGINX_WORKER_PROCESSES"
+print_info "  Worker 连接数: $NGINX_WORKER_CONNECTIONS"
+print_info "  启用 SSL: $ENABLE_SSL"
 
 # 检查是否为 root
 check_root() {

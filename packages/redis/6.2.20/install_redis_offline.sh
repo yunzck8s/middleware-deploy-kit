@@ -56,14 +56,35 @@ check_os_version() {
 }
 
 # 设置变量
+# 配置变量（优先从环境变量读取，否则使用默认值）
 REDIS_VERSION="6.2.20"
 REDIS_PACKAGE_NAME="redis-${REDIS_VERSION}.tar.gz"
-REDIS_INSTALL_DIR="/usr/local/redis"
+REDIS_INSTALL_DIR="${REDIS_INSTALL_DIR:-/usr/local/redis}"
 REDIS_CONFIG_DIR="/etc/redis"
-REDIS_DATA_DIR="/var/lib/redis"
-REDIS_LOG_DIR="/var/log/redis"
+REDIS_DATA_DIR="${REDIS_DATA_DIR:-/var/lib/redis}"
+REDIS_LOG_DIR="${REDIS_LOG_DIR:-/var/log/redis}"
 REDIS_USER="redis"
 REDIS_SERVICE_FILE="/etc/systemd/system/redis.service"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_BIND="${REDIS_BIND:-127.0.0.1}"
+REDIS_PASSWORD="${REDIS_PASSWORD:-}"
+REDIS_MAXMEMORY="${REDIS_MAXMEMORY:-2gb}"
+ENABLE_AOF="${ENABLE_AOF:-yes}"
+
+# 打印配置信息
+print_info "Redis 部署配置:"
+print_info "  安装目录: $REDIS_INSTALL_DIR"
+print_info "  监听端口: $REDIS_PORT"
+print_info "  绑定地址: $REDIS_BIND"
+print_info "  数据目录: $REDIS_DATA_DIR"
+print_info "  日志目录: $REDIS_LOG_DIR"
+print_info "  最大内存: $REDIS_MAXMEMORY"
+print_info "  AOF 持久化: $ENABLE_AOF"
+if [ -n "$REDIS_PASSWORD" ]; then
+    print_info "  认证密码: ******"
+else
+    print_warning "  认证密码: 未设置（生产环境建议设置密码）"
+fi
 
 # 检查离线包是否存在
 check_offline_package() {
