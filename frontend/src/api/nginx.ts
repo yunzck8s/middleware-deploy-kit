@@ -88,3 +88,49 @@ export const previewNginxConfig = async (data: CreateNginxConfigData): Promise<P
   const response = await client.post<ApiResponse<PreviewResponse>>('/nginx/preview', data);
   return (response as unknown as ApiResponse<PreviewResponse>).data!;
 };
+
+// ==================== Nginx 配置应用相关 API ====================
+
+export interface ApplyConfigData {
+  server_id: number;
+  target_path?: string;
+  backup_enabled?: boolean;
+  restart_service?: boolean;
+  service_name?: string;
+}
+
+export interface ApplyHistoryParams {
+  page?: number;
+  page_size?: number;
+}
+
+// 获取服务器上的 Nginx 部署信息
+export interface NginxDeployInfo {
+  found: boolean;
+  target_path?: string;
+  service_name?: string;
+  deployed_at?: string;
+}
+
+export const getNginxDeployInfo = async (serverId: number): Promise<NginxDeployInfo> => {
+  const response = await client.get<ApiResponse<NginxDeployInfo>>(`/nginx/deploy-info/${serverId}`);
+  return (response as unknown as ApiResponse<NginxDeployInfo>).data!;
+};
+
+// 应用 Nginx 配置到服务器
+export const applyNginxConfig = async (id: number, data: ApplyConfigData): Promise<any> => {
+  const response = await client.post<ApiResponse<any>>(`/nginx/${id}/apply`, data);
+  return (response as unknown as ApiResponse<any>).data!;
+};
+
+// 获取配置应用历史
+export const getApplyHistory = async (id: number, params?: ApplyHistoryParams): Promise<any> => {
+  const response = await client.get<ApiResponse<any>>(`/nginx/${id}/apply-history`, { params });
+  return (response as unknown as ApiResponse<any>).data!;
+};
+
+// 获取应用详情（包含日志）
+export const getApplyDetail = async (applyId: number): Promise<any> => {
+  const response = await client.get<ApiResponse<any>>(`/nginx/applies/${applyId}`);
+  return (response as unknown as ApiResponse<any>).data!;
+};

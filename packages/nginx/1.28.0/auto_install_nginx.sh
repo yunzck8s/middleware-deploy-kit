@@ -45,15 +45,157 @@ check_root() {
     fi
 }
 
+# 关闭防火墙
+disable_firewall() {
+    print_info "检查防火墙状态..."
+
+    # 检查 firewalld 是否存在
+    if ! command -v firewall-cmd &> /dev/null; then
+        print_info "firewalld 未安装，跳过"
+        return 0
+    fi
+
+    # 检查是否已经停止
+    if ! systemctl is-active --quiet firewalld; then
+        print_info "防火墙已经停止"
+    else
+        print_info "停止防火墙..."
+        systemctl stop firewalld
+        print_success "防火墙已停止"
+    fi
+
+    # 检查是否已经禁用
+    if ! systemctl is-enabled --quiet firewalld 2>/dev/null; then
+        print_info "防火墙已经禁用"
+    else
+        print_info "禁用防火墙开机自启..."
+        systemctl disable firewalld
+        print_success "防火墙开机自启已禁用"
+    fi
+}
+
 # 关闭 SELinux
 disable_selinux() {
-    print_info "关闭 SELinux..."
-    if [[ $(getenforce) == "Enforcing" ]]; then
+    print_info "检查 SELinux 状态..."
+
+    # 检查 SELinux 是否存在
+    if ! command -v getenforce &> /dev/null; then
+        print_info "SELinux 未安装，跳过"
+        return 0
+    fi
+
+    # 检查当前状态
+    current_status=$(getenforce)
+    if [[ "$current_status" == "Disabled" ]]; then
+        print_info "SELinux 已经完全禁用"
+        return 0
+    elif [[ "$current_status" == "Permissive" ]]; then
+        print_info "SELinux 已经是 Permissive 模式"
+    else
+        print_info "临时关闭 SELinux..."
         setenforce 0
         print_success "SELinux 已临时关闭"
     fi
-    sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config || true
-    print_success "SELinux 配置已修改为 permissive (重启后生效)"
+
+    # 检查配置文件
+    if [[ -f /etc/selinux/config ]]; then
+        if grep -q "^SELINUX=disabled" /etc/selinux/config || grep -q "^SELINUX=permissive" /etc/selinux/config; then
+            print_info "SELinux 配置文件已正确设置"
+        else
+            print_info "修改 SELinux 配置文件..."
+            sed -i 's/^SELINUX=enforcing$/SELINUX=disabled/' /etc/selinux/config
+            print_success "SELinux 配置已修改为 disabled (重启后生效)"
+        fi
+    fi
+}
+
+# 内核优化
+optimize_kernel() {
+    print_info "检查内核参数优化..."
+
+    local SYSCTL_CONF="/etc/sysctl.d/99-nginx-optimization.conf"
+    local MARKER="# Nginx optimization parameters"
+
+    # 检查是否已经配置过
+    if [[ -f "$SYSCTL_CONF" ]] && grep -q "$MARKER" "$SYSCTL_CONF"; then
+        print_info "内核参数已优化，跳过"
+        return 0
+    fi
+
+    print_info "配置内核参数优化..."
+
+    cat > "$SYSCTL_CONF" << 'EOF'
+# Nginx optimization parameters
+# TCP 优化
+net.ipv4.tcp_fin_timeout = 30
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_keepalive_time = 1200
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_max_tw_buckets = 5000
+
+# 网络性能优化
+net.core.somaxconn = 65535
+net.core.netdev_max_backlog = 262144
+net.ipv4.tcp_max_orphans = 262144
+
+# 内存优化
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+
+# 文件系统优化
+fs.file-max = 655360
+
+# 连接跟踪优化
+net.netfilter.nf_conntrack_max = 1048576
+net.nf_conntrack_max = 1048576
+EOF
+
+    # 应用配置（某些参数可能不存在，忽略错误）
+    sysctl -p "$SYSCTL_CONF" 2>&1 | grep -v "No such file or directory" || true
+    print_success "内核参数优化完成"
+}
+
+# 优化文件打开限制
+optimize_limits() {
+    print_info "检查文件打开数限制..."
+
+    local LIMITS_CONF="/etc/security/limits.conf"
+    local MARKER="# Nginx file limits optimization"
+
+    # 检查是否已经配置过
+    if grep -q "$MARKER" "$LIMITS_CONF"; then
+        print_info "文件打开数限制已优化，跳过"
+        return 0
+    fi
+
+    print_info "配置文件打开数限制..."
+
+    # 添加到 limits.conf
+    cat >> "$LIMITS_CONF" << 'EOF'
+
+# Nginx file limits optimization
+* soft nofile 655360
+* hard nofile 655360
+* soft nproc 655360
+* hard nproc 655360
+root soft nofile 655360
+root hard nofile 655360
+root soft nproc 655360
+root hard nproc 655360
+EOF
+
+    # 配置 systemd 的限制
+    mkdir -p /etc/systemd/system.conf.d
+    cat > /etc/systemd/system.conf.d/limits.conf << 'EOF'
+[Manager]
+DefaultLimitNOFILE=655360
+DefaultLimitNPROC=655360
+EOF
+
+    print_success "文件打开数限制优化完成（重新登录或重启后生效）"
 }
 
 # 配置本地 repo
@@ -65,7 +207,7 @@ setup_local_repo() {
     OS_ID=$(grep '^ID=' /etc/os-release | awk -F= '{print $2}' | tr -d '"')
     print_info "当前操作系统: $OS_ID"
 
-    BUILD_REPO_DIR="/data/buildrepo"
+    BUILD_REPO_DIR="${BUILD_REPO_DIR:-/data/buildrepo}"
     mkdir -p "$BUILD_REPO_DIR"
     if [[ -d "libs" ]]; then
         tar -zxvf libs/$OS_ID/*.tar.gz --strip-components=1 -C "$BUILD_REPO_DIR"
@@ -225,13 +367,27 @@ show_install_info() {
 main() {
     print_info "开始安装 Nginx..."
     check_root
+
+    # 系统优化
+    print_info "========================================"
+    print_info "步骤 1: 系统环境优化"
+    print_info "========================================"
+    disable_firewall
     disable_selinux
+    optimize_kernel
+    optimize_limits
+
+    # 安装 Nginx
+    print_info "========================================"
+    print_info "步骤 2: 安装 Nginx"
+    print_info "========================================"
     setup_local_repo
     install_dependencies
     compile_nginx
     configure_service
     start_nginx
     configure_logs
+
     show_install_info
     print_success "Nginx 安装过程全部完成！"
 }

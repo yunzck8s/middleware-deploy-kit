@@ -126,13 +126,17 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	nginx := v1.Group("/nginx")
 	nginx.Use(api.AuthMiddleware(cfg))
 	{
-		nginx.POST("", nginxAPI.Create)                // 创建 Nginx 配置
-		nginx.GET("", nginxAPI.List)                   // 获取配置列表
-		nginx.GET("/:id", nginxAPI.Get)                // 获取配置详情
-		nginx.PUT("/:id", nginxAPI.Update)             // 更新配置
-		nginx.DELETE("/:id", nginxAPI.Delete)          // 删除配置
-		nginx.GET("/:id/generate", nginxAPI.Generate)  // 生成配置文件
-		nginx.POST("/preview", nginxAPI.Preview)       // 预览配置（不保存）
+		nginx.POST("", nginxAPI.Create)                       // 创建 Nginx 配置
+		nginx.GET("", nginxAPI.List)                          // 获取配置列表
+		nginx.GET("/:id", nginxAPI.Get)                       // 获取配置详情
+		nginx.PUT("/:id", nginxAPI.Update)                    // 更新配置
+		nginx.DELETE("/:id", nginxAPI.Delete)                 // 删除配置
+		nginx.GET("/:id/generate", nginxAPI.Generate)         // 生成配置文件
+		nginx.POST("/preview", nginxAPI.Preview)              // 预览配置（不保存）
+		nginx.POST("/:id/apply", nginxAPI.ApplyConfig)        // 应用配置到服务器
+		nginx.GET("/:id/apply-history", nginxAPI.GetApplyHistory) // 获取配置应用历史
+		nginx.GET("/applies/:id", nginxAPI.GetApplyDetail)    // 获取应用详情
+		nginx.GET("/deploy-info/:server_id", nginxAPI.GetNginxDeployInfo) // 获取服务器上的 Nginx 部署信息
 	}
 
 	// 部署管理 API
@@ -146,8 +150,10 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 		deployments.GET("/:id", deploymentAPI.Get)                    // 获取部署任务详情
 		deployments.DELETE("/:id", deploymentAPI.Delete)              // 删除部署任务
 		deployments.POST("/:id/execute", deploymentAPI.Execute)       // 执行部署任务
+		deployments.POST("/:id/cancel", deploymentAPI.Cancel)         // 取消部署任务
 		deployments.POST("/:id/rollback", deploymentAPI.Rollback)     // 回滚部署
 		deployments.GET("/:id/logs", deploymentAPI.GetLogs)           // 获取部署日志
+		deployments.GET("/:id/logs/stream", deploymentAPI.StreamLogs) // SSE 实时日志流
 	}
 
 	// 部署脚本管理 API
