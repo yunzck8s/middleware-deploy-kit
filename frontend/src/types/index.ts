@@ -94,6 +94,16 @@ export interface SSHTestResult {
   server?: Server;
 }
 
+// Nginx Location 配置
+export interface NginxLocation {
+  id?: number;
+  path: string;                    // 路径，如 /、/api、/static
+  match_type?: string;             // 匹配类型：exact(=), prefix(无), regex(~)
+  proxy_pass?: string;             // 代理地址
+  root?: string;                   // 静态文件根目录
+  try_files?: string;              // try_files 配置
+}
+
 // Nginx 配置
 export interface NginxConfig {
   id: number;
@@ -116,6 +126,7 @@ export interface NginxConfig {
   log_format: 'main' | 'json';
   enable_proxy: boolean;
   proxy_pass: string;
+  locations?: NginxLocation[];     // 多个 location 配置
   client_max_body_size: string;
   gzip: boolean;
   custom_config: string;
@@ -177,16 +188,6 @@ export interface DeploymentLog {
   created_at: string;
 }
 
-// 离线包参数验证规则
-export interface ParameterValidation {
-  min?: number;
-  max?: number;
-  min_len?: number;
-  max_len?: number;
-  pattern?: string;
-  message?: string;
-}
-
 // 离线包参数选项
 export interface ParameterOption {
   label: string;
@@ -203,13 +204,28 @@ export interface PackageParameter {
   description?: string;            // 参数说明
   placeholder?: string;            // 占位符
   options?: ParameterOption[];     // 选项（type=select时使用）
-  validation?: ParameterValidation; // 验证规则
+
+  // 验证规则（直接在参数对象中）
+  min?: number;                    // 最小值（数字类型）
+  max?: number;                    // 最大值（数字类型）
+  min_len?: number;                // 最小长度（字符串类型）
+  max_len?: number;                // 最大长度（字符串类型）
+  pattern?: string;                // 正则表达式（字符串类型）
+
+  advanced?: boolean;              // 是否为高级参数（高级参数将折叠显示）
+}
+
+// 支持的操作系统
+export interface SupportedOS {
+  type: string;                    // 操作系统类型: rocky, centos, openEuler, kylin
+  versions: string[];              // 支持的版本列表
 }
 
 // 系统要求
 export interface PackageRequirements {
-  min_memory?: string;             // 最小内存（如 "512MB", "1GB"）
-  min_disk?: string;               // 最小磁盘（如 "100MB"）
+  disk_space?: string;             // 磁盘空间（如 "500MB", "1GB"）
+  memory?: string;                 // 内存（如 "512MB", "1GB"）
+  root_required?: boolean;         // 是否需要 root 权限
   ports?: number[];                // 需要的端口列表
   dependencies?: string[];         // 依赖的系统包
 }
@@ -220,9 +236,44 @@ export interface PackageMetadata {
   version: string;                 // 版本号
   display_name: string;            // 显示名称
   description: string;             // 描述
-  supported_os: string[];          // 支持的操作系统
+  supported_os: SupportedOS[];     // 支持的操作系统
   install_script: string;          // 安装脚本名称
   parameters: PackageParameter[];  // 可配置参数列表
   features?: string[];             // 功能特性
   requirements?: PackageRequirements; // 系统要求
+}
+
+// Nginx 配置应用记录
+export interface NginxConfigApply {
+  id: number;
+  nginx_config_id: number;
+  server_id: number;
+  target_path: string;
+  backup_enabled: boolean;
+  backup_path?: string;
+  restart_service: boolean;
+  service_name: string;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  start_time?: string;
+  end_time?: string;
+  duration: number;
+  error_msg?: string;
+  created_at: string;
+  updated_at: string;
+  nginx_config?: NginxConfig;
+  server?: Server;
+  logs?: NginxConfigApplyLog[];
+}
+
+// Nginx 配置应用日志
+export interface NginxConfigApplyLog {
+  id: number;
+  apply_id: number;
+  step: number;
+  action: string;
+  status: 'pending' | 'running' | 'success' | 'failed';
+  output?: string;
+  error_msg?: string;
+  created_at: string;
+  updated_at: string;
 }

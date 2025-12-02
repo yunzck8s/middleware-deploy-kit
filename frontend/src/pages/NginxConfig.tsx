@@ -17,6 +17,7 @@ import {
   Col,
   Tabs,
   Divider,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -26,6 +27,7 @@ import {
   EyeOutlined,
   CodeOutlined,
   CopyOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -38,6 +40,7 @@ import {
 } from '../api/nginx';
 import { getCertificateList } from '../api/certificate';
 import type { NginxConfig, Certificate } from '../types';
+import ApplyConfigModal from '../components/nginx/ApplyConfigModal';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -56,6 +59,8 @@ const NginxConfigPage: React.FC = () => {
   const [previewContent, setPreviewContent] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [applyModalVisible, setApplyModalVisible] = useState(false);
+  const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
   // 加载配置列表
@@ -117,7 +122,16 @@ const NginxConfigPage: React.FC = () => {
   const handleEdit = (config: NginxConfig) => {
     setModalTitle('编辑 Nginx 配置');
     setEditingConfig(config);
-    form.setFieldsValue(config);
+
+    // 处理 locations：如果为空，设置默认值
+    const formValues = {
+      ...config,
+      locations: config.locations && config.locations.length > 0
+        ? config.locations
+        : [{ path: '/', proxy_pass: '' }]
+    };
+
+    form.setFieldsValue(formValues);
     setModalVisible(true);
   };
 
@@ -188,6 +202,17 @@ const NginxConfigPage: React.FC = () => {
   const handleCopy = () => {
     navigator.clipboard.writeText(previewContent);
     message.success('已复制到剪贴板');
+  };
+
+  // 打开应用配置对话框
+  const handleApplyConfig = (id: number) => {
+    setSelectedConfigId(id);
+    setApplyModalVisible(true);
+  };
+
+  // 应用配置成功回调
+  const handleApplySuccess = () => {
+    loadConfigs();
   };
 
   const columns: ColumnsType<NginxConfig> = [
@@ -262,7 +287,7 @@ const NginxConfigPage: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       render: (_, record) => (
         <Space>
           <Button
@@ -272,6 +297,14 @@ const NginxConfigPage: React.FC = () => {
             onClick={() => handleViewGenerated(record.id)}
           >
             查看
+          </Button>
+          <Button
+            type="link"
+            icon={<SendOutlined />}
+            size="small"
+            onClick={() => handleApplyConfig(record.id)}
+          >
+            应用配置
           </Button>
           <Button
             type="link"
@@ -478,13 +511,90 @@ const NginxConfigPage: React.FC = () => {
                     >
                       {({ getFieldValue }) =>
                         getFieldValue('enable_proxy') && (
-                          <Form.Item
-                            label="代理地址"
-                            name="proxy_pass"
-                            rules={[{ required: true, message: '请输入代理地址' }]}
-                          >
-                            <Input placeholder="http://127.0.0.1:3000" />
-                          </Form.Item>
+                          <>
+                            <Alert
+                              message="反向代理配置"
+                              description="配置 Nginx 将请求转发到后端服务。可以添加多个 location 路径，支持代理不同的后端服务或静态文件。"
+                              type="info"
+                              showIcon
+                              style={{ marginBottom: 16 }}
+                            />
+                            <Form.List name="locations" initialValue={[{ path: '/', proxy_pass: '' }]}>
+                              {(fields, { add, remove }) => (
+                                <>
+                                  {fields.map(({ key, name, ...restField }, index) => (
+                                    <Card
+                                      key={key}
+                                      size="small"
+                                      title={`Location ${index + 1}`}
+                                      extra={
+                                        fields.length > 1 && (
+                                          <Button
+                                            type="link"
+                                            danger
+                                            size="small"
+                                            onClick={() => remove(name)}
+                                          >
+                                            删除
+                                          </Button>
+                                        )
+                                      }
+                                      style={{ marginBottom: 16 }}
+                                    >
+                                      <Row gutter={16}>
+                                        <Col span={8}>
+                                          <Form.Item
+                                            {...restField}
+                                            name={[name, 'path']}
+                                            label="路径"
+                                            rules={[{ required: true, message: '请输入路径' }]}
+                                          >
+                                            <Input placeholder="/ 或 /api 或 /static" />
+                                          </Form.Item>
+                                        </Col>
+                                        <Col span={16}>
+                                          <Form.Item
+                                            {...restField}
+                                            name={[name, 'proxy_pass']}
+                                            label="代理地址"
+                                            tooltip="留空则作为静态文件目录"
+                                          >
+                                            <Input placeholder="http://127.0.0.1:3000" />
+                                          </Form.Item>
+                                        </Col>
+                                      </Row>
+                                      <Form.Item
+                                        {...restField}
+                                        name={[name, 'root']}
+                                        label="静态文件路径（可选）"
+                                        tooltip="当不使用反向代理时，指定静态文件目录，如 /var/www/html"
+                                      >
+                                        <Input placeholder="/var/www/html" />
+                                      </Form.Item>
+                                      <Form.Item
+                                        {...restField}
+                                        name={[name, 'try_files']}
+                                        label="try_files 配置（可选）"
+                                        tooltip="自定义 try_files 指令，如 $uri $uri/ /index.html"
+                                      >
+                                        <Input placeholder="$uri $uri/ =404" />
+                                      </Form.Item>
+                                    </Card>
+                                  ))}
+                                  <Form.Item>
+                                    <Button
+                                      type="dashed"
+                                      onClick={() => add({ path: '', proxy_pass: '' })}
+                                      block
+                                      icon={<PlusOutlined />}
+                                    >
+                                      添加 Location
+                                    </Button>
+                                  </Form.Item>
+                                </>
+                              )}
+                            </Form.List>
+                          </>
                         )
                       }
                     </Form.Item>
@@ -508,12 +618,28 @@ const NginxConfigPage: React.FC = () => {
                         </Form.Item>
                       </Col>
                     </Row>
-                    <Form.Item label="日志格式" name="log_format">
+                    <Form.Item
+                      label="日志格式"
+                      name="log_format"
+                      tooltip="选择日志输出格式，影响日志分析和监控系统的集成"
+                    >
                       <Select>
                         <Option value="main">标准格式 (main)</Option>
                         <Option value="json">JSON 格式</Option>
                       </Select>
                     </Form.Item>
+                    <Alert
+                      message="日志格式说明"
+                      description={
+                        <div style={{ fontSize: '12px' }}>
+                          <div><strong>标准格式 (main)</strong>：传统的文本格式，适合人工查看，每行包含 IP、时间、请求方法等信息。</div>
+                          <div style={{ marginTop: 4 }}><strong>JSON 格式</strong>：结构化的 JSON 格式，便于日志收集系统（ELK、Loki 等）解析和分析，支持复杂查询和统计。</div>
+                        </div>
+                      }
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 0 }}
+                    />
                   </>
                 ),
               },
@@ -541,6 +667,7 @@ const NginxConfigPage: React.FC = () => {
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         width={800}
+        zIndex={1100}
         footer={[
           <Button key="copy" icon={<CopyOutlined />} onClick={handleCopy}>
             复制
@@ -565,6 +692,16 @@ const NginxConfigPage: React.FC = () => {
           {previewContent}
         </pre>
       </Modal>
+
+      {/* 应用配置对话框 */}
+      {selectedConfigId && (
+        <ApplyConfigModal
+          configId={selectedConfigId}
+          open={applyModalVisible}
+          onClose={() => setApplyModalVisible(false)}
+          onSuccess={handleApplySuccess}
+        />
+      )}
     </div>
   );
 };
