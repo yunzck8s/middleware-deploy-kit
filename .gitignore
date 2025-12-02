@@ -16,6 +16,8 @@ backend/data/*.db
 # Go
 backend/bin/
 backend/vendor/
+backend/server
+backend/cmd/server/server
 
 # React
 frontend/node_modules/
@@ -37,3 +39,6 @@ Thumbs.db
 *.tmp
 *.log
 /tmp/
+
+# 工具目录
+.autonomous/
