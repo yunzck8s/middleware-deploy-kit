@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +29,48 @@ type DeploymentAPI struct {
 
 func NewDeploymentAPI(cfg *config.Config) *DeploymentAPI {
 	return &DeploymentAPI{cfg: cfg}
+}
+
+// deploymentExecution 部署执行实例
+type deploymentExecution struct {
+	deployment *models.Deployment
+	ctx        context.Context
+	cancel     context.CancelFunc
+	logChan    chan *models.DeploymentLog
+	done       chan struct{}
+}
+
+// deploymentManager 部署管理器，管理所有活跃的部署任务
+type deploymentManager struct {
+	mu          sync.RWMutex
+	deployments map[uint]*deploymentExecution
+}
+
+// 全局部署管理器实例
+var deployMgr = &deploymentManager{
+	deployments: make(map[uint]*deploymentExecution),
+}
+
+// Add 添加部署任务到管理器
+func (dm *deploymentManager) Add(id uint, exec *deploymentExecution) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	dm.deployments[id] = exec
+}
+
+// Remove 从管理器移除部署任务
+func (dm *deploymentManager) Remove(id uint) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	delete(dm.deployments, id)
+}
+
+// Get 获取部署任务
+func (dm *deploymentManager) Get(id uint) (*deploymentExecution, bool) {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	exec, ok := dm.deployments[id]
+	return exec, ok
 }
 
 // CreateDeploymentRequest 创建部署请求
@@ -231,8 +275,23 @@ func (a *DeploymentAPI) Execute(c *gin.Context) {
 		return
 	}
 
+	// 创建执行上下文
+	ctx, cancel := context.WithCancel(context.Background())
+	logChan := make(chan *models.DeploymentLog, 100)
+	done := make(chan struct{})
+
+	exec := &deploymentExecution{
+		deployment: &deployment,
+		ctx:        ctx,
+		cancel:     cancel,
+		logChan:    logChan,
+		done:       done,
+	}
+
+	deployMgr.Add(uint(id), exec)
+
 	// 异步执行部署
-	go a.executeDeployment(&deployment)
+	go a.executeDeploymentWithContext(ctx, &deployment, logChan, done)
 
 	response.Success(c, gin.H{"message": "部署任务已开始执行"})
 }
@@ -1009,4 +1068,283 @@ func (a *DeploymentAPI) executeRollback(rollbackDeployment, originalDeployment *
 		a.updateLog(rollbackDeployment.ID, step, "success", output, "")
 		step++
 	}
+}
+
+// Cancel 取消部署任务
+func (a *DeploymentAPI) Cancel(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的 ID")
+		return
+	}
+
+	exec, ok := deployMgr.Get(uint(id))
+	if !ok {
+		response.Error(c, http.StatusBadRequest, "任务未在执行中")
+		return
+	}
+
+	// 触发取消
+	exec.cancel()
+
+	response.Success(c, gin.H{"message": "正在取消部署任务，请等待当前步骤完成"})
+}
+
+// StreamLogs 实时推送部署日志 (SSE)
+func (a *DeploymentAPI) StreamLogs(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "无效的 ID")
+		return
+	}
+
+	// 获取执行实例
+	exec, ok := deployMgr.Get(uint(id))
+	if !ok {
+		response.Error(c, http.StatusNotFound, "部署任务未在执行中")
+		return
+	}
+
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	// 先发送历史日志
+	var existingLogs []models.DeploymentLog
+	db.DB.Where("deployment_id = ?", id).Order("step ASC").Find(&existingLogs)
+
+	for _, log := range existingLogs {
+		data, _ := json.Marshal(log)
+		fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", data)
+		c.Writer.Flush()
+	}
+
+	// 监听新日志
+	clientGone := c.Request.Context().Done()
+
+	for {
+		select {
+		case log, ok := <-exec.logChan:
+			if !ok {
+				// 日志通道关闭，部署结束
+				fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+				c.Writer.Flush()
+				return
+			}
+
+			// 发送日志
+			data, _ := json.Marshal(log)
+			fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", data)
+			c.Writer.Flush()
+
+		case <-exec.done:
+			// 部署完成
+			fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+			c.Writer.Flush()
+			return
+
+		case <-clientGone:
+			// 客户端断开连接
+			logger.Infof("SSE 客户端断开连接: deployment %d", id)
+			return
+		}
+	}
+}
+
+// handleCancellation 处理取消操作
+func (a *DeploymentAPI) handleCancellation(deployment *models.Deployment, logChan chan<- *models.DeploymentLog) {
+	log := &models.DeploymentLog{
+		DeploymentID: deployment.ID,
+		Step:         999,
+		Action:       "部署已取消",
+		Status:       "cancelled",
+		Output:       "用户主动取消了部署任务",
+	}
+	db.DB.Create(log)
+	if logChan != nil {
+		logChan <- log
+	}
+
+	db.DB.Model(deployment).Updates(map[string]interface{}{
+		"status":    models.DeployStatusCancelled,
+		"error_msg": "用户取消",
+	})
+}
+
+// executeDeploymentWithContext 使用 Context 执行部署
+func (a *DeploymentAPI) executeDeploymentWithContext(
+	ctx context.Context,
+	deployment *models.Deployment,
+	logChan chan<- *models.DeploymentLog,
+	done chan<- struct{},
+) {
+	startTime := time.Now()
+
+	defer func() {
+		close(logChan)
+		close(done)
+		deployMgr.Remove(deployment.ID)
+
+		// 更新最终状态
+		completedAt := time.Now()
+		duration := int(completedAt.Sub(startTime).Seconds())
+		db.DB.Model(deployment).Updates(map[string]interface{}{
+			"completed_at": completedAt,
+			"duration":     duration,
+		})
+	}()
+
+	// 更新状态为执行中
+	db.DB.Model(deployment).Updates(map[string]interface{}{
+		"status":     models.DeployStatusRunning,
+		"started_at": startTime,
+		"error_msg":  "",
+	})
+
+	// 清除旧日志
+	db.DB.Where("deployment_id = ?", deployment.ID).Delete(&models.DeploymentLog{})
+
+	step := 1
+	var finalErr error
+
+	// 检查是否已取消
+	select {
+	case <-ctx.Done():
+		a.handleCancellation(deployment, logChan)
+		return
+	default:
+	}
+
+	// 1. 建立 SSH 连接
+	log := a.createLog(deployment.ID, step, "建立 SSH 连接", "running")
+	db.DB.Create(log)
+	logChan <- log
+
+	client, err := a.connectSSH(deployment.Server)
+	if err != nil {
+		finalErr = fmt.Errorf("SSH 连接失败: %v", err)
+		log.Status = "failed"
+		log.ErrorMsg = finalErr.Error()
+		db.DB.Save(log)
+		logChan <- log
+		a.finishDeployment(deployment, finalErr)
+		return
+	}
+	defer client.Close()
+
+	log.Status = "success"
+	log.Output = "连接成功"
+	db.DB.Save(log)
+	logChan <- log
+	step++
+
+	// 检查取消
+	select {
+	case <-ctx.Done():
+		a.handleCancellation(deployment, logChan)
+		return
+	default:
+	}
+
+	// 2. 创建 SFTP 客户端
+	log = a.createLog(deployment.ID, step, "创建 SFTP 会话", "running")
+	db.DB.Create(log)
+	logChan <- log
+
+	sftpClient, err := sftp.NewClient(client)
+	if err != nil {
+		finalErr = fmt.Errorf("SFTP 会话创建失败: %v", err)
+		log.Status = "failed"
+		log.ErrorMsg = finalErr.Error()
+		db.DB.Save(log)
+		logChan <- log
+		a.finishDeployment(deployment, finalErr)
+		return
+	}
+	defer sftpClient.Close()
+
+	log.Status = "success"
+	log.Output = "SFTP 会话已建立"
+	db.DB.Save(log)
+	logChan <- log
+	step++
+
+	// 检查取消
+	select {
+	case <-ctx.Done():
+		a.handleCancellation(deployment, logChan)
+		return
+	default:
+	}
+
+	// 3. 执行 pre_deploy 钩子
+	if err := executeHooksByType(deployment, "pre_deploy", client, sftpClient); err != nil {
+		finalErr = fmt.Errorf("pre_deploy 钩子执行失败: %v", err)
+		a.finishDeployment(deployment, finalErr)
+		return
+	}
+
+	// 检查取消
+	select {
+	case <-ctx.Done():
+		a.handleCancellation(deployment, logChan)
+		return
+	default:
+	}
+
+	// 4. 根据类型执行部署
+	switch deployment.Type {
+	case models.DeployTypeNginxConfig:
+		finalErr = a.deployNginxConfig(client, sftpClient, deployment, &step)
+	case models.DeployTypePackage:
+		finalErr = a.deployPackage(client, sftpClient, deployment, &step)
+	case models.DeployTypeCertificate:
+		finalErr = a.deployCertificate(client, sftpClient, deployment, &step)
+	}
+
+	// 5. 执行 post_deploy 钩子（无论成功或失败都执行）
+	executeHooksByType(deployment, "post_deploy", client, sftpClient)
+
+	// 6. 根据结果执行 on_success 或 on_failure 钩子
+	if finalErr != nil {
+		executeHooksByType(deployment, "on_failure", client, sftpClient)
+	} else {
+		executeHooksByType(deployment, "on_success", client, sftpClient)
+	}
+
+	// 最终状态更新
+	a.finishDeployment(deployment, finalErr)
+}
+
+// createLog 创建日志记录
+func (a *DeploymentAPI) createLog(deploymentID uint, step int, action, status string) *models.DeploymentLog {
+	return &models.DeploymentLog{
+		DeploymentID: deploymentID,
+		Step:         step,
+		Action:       action,
+		Status:       status,
+	}
+}
+
+// finishDeployment 完成部署，更新最终状态
+func (a *DeploymentAPI) finishDeployment(deployment *models.Deployment, err error) {
+	status := models.DeployStatusSuccess
+	errorMsg := ""
+	canRollback := false
+
+	if err != nil {
+		status = models.DeployStatusFailed
+		errorMsg = err.Error()
+	} else {
+		// 部署成功且有备份的情况下可以回滚
+		canRollback = deployment.BackupEnabled && deployment.BackupPath != ""
+	}
+
+	db.DB.Model(deployment).Updates(map[string]interface{}{
+		"status":       status,
+		"error_msg":    errorMsg,
+		"can_rollback": canRollback,
+	})
 }

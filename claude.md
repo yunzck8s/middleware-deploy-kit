@@ -1,625 +1,562 @@
-# 中间件离线部署管理平台 - 开发任务清单
+# 中间件离线部署管理平台 - 剩余开发任务
 
-## 项目概述
+## 📋 当前开发进度总结
 
-一个基于 Go + React 的中间件离线部署管理平台，支持 Nginx、Redis、OpenSSH 等中间件的离线包管理、配置生成和自动化部署。
+### ✅ 已完成的三大需求（后端部分）
 
-### 技术栈
-- **后端**: Go 1.21+ / Gin / GORM / SQLite / JWT / SSH
-- **前端**: React 18 / TypeScript / Vite / Ant Design v5
-- **部署**: SSH/SFTP 远程部署
+#### 需求1: Nginx 部署路径参数化 ✅
+**目标**: 让 Nginx 部署脚本中的路径可以由前端动态传入，避免硬编码
 
----
+**后端完成**:
+- ✅ 添加 `BUILD_REPO_DIR` 参数到 `packages/nginx/1.28.0/metadata.json`
+- ✅ 修改 `auto_install_nginx.sh` 第68行使用环境变量 `${BUILD_REPO_DIR:-/data/buildrepo}`
+- ✅ PackageMetadata API 支持读取参数定义
+- ✅ Deployment.deploy_params 字段支持 JSON 参数
+- ✅ 后端环境变量注入机制已实现
 
-## ✅ 已完成任务
-
-### Phase 1: 基础设施搭建
-- [x] 项目初始化（Go模块、React项目）
-- [x] 后端框架搭建（Gin路由、中间件）
-- [x] 前端框架搭建（React Router、Ant Design）
-- [x] 数据库设计（SQLite + GORM）
-- [x] JWT 认证系统
-- [x] 响应统一封装
-- [x] 日志系统集成
-- [x] .gitignore 配置
-- [x] Nginx JSON 日志格式支持
-
-### Phase 2: 用户认证模块
-- [x] 用户数据模型（User Model）
-- [x] 用户注册、登录 API
-- [x] JWT Token 生成和验证
-- [x] 认证中间件
-- [x] 登录页面（前端）
-- [x] 路由守卫（前端）
-- [x] Token 存储与自动登出
-
-### Phase 3: 离线包管理
-- [x] 中间件离线包数据模型（MiddlewarePackage）
-- [x] 离线包上传 API（支持 ZIP/tar.gz）
-- [x] 离线包列表、详情、删除 API
-- [x] 文件哈希校验（SHA256）
-- [x] 前端离线包管理页面
-- [x] 文件上传组件（拖拽上传）
-- [x] 离线包列表展示
-
-### Phase 4: SSL证书管理
-- [x] 证书数据模型（Certificate）
-- [x] 证书上传 API（.crt + .key）
-- [x] 证书解析（有效期、域名、颁发者）
-- [x] 证书列表、详情、删除 API
-- [x] 前端证书管理页面
-- [x] 证书有效期检查与提醒
-
-### Phase 5: 服务器管理
-- [x] 服务器数据模型（Server、ServerGroup）
-- [x] 服务器 CRUD API
-- [x] SSH 连接测试（密码/密钥认证）
-- [x] 操作系统检测（Rocky/CentOS/openEuler）
-- [x] 前端服务器管理页面
-- [x] SSH 连接状态实时测试
-
-### Phase 6: Nginx 可视化配置
-- [x] Nginx 配置数据模型（NginxConfig、Location、Upstream）
-- [x] 配置 CRUD API
-- [x] 配置模板生成（基于 Go template）
-- [x] 配置预览功能
-- [x] 支持 HTTP/HTTPS、代理、日志、Gzip
-- [x] 前端可视化配置页面
-- [x] 分Tab表单设计（基本/HTTP/代理/日志/自定义）
-- [x] 证书下拉选择集成
-- [x] 配置预览弹窗
-
-### Phase 7: 部署执行引擎 ⭐
-- [x] 部署任务数据模型（Deployment、DeploymentLog）
-- [x] 部署任务 CRUD API
-- [x] SSH 文件传输（SFTP）
-- [x] 远程命令执行
-- [x] Nginx 配置部署
-  - [x] 配置文件生成
-  - [x] 原配置备份
-  - [x] nginx -t 测试
-  - [x] 服务 reload/restart
-- [x] 离线包部署
-  - [x] 文件上传
-  - [x] 自动解压（tar.gz/zip）
-- [x] 证书部署
-  - [x] 证书和私钥上传
-  - [x] 文件权限设置
-- [x] 部署日志分步记录
-- [x] 前端部署管理页面
-  - [x] 部署任务创建
-  - [x] 实时日志查看（自动刷新）
-  - [x] 部署历史记录
-  - [x] 统计图表
-
-### Phase 8: 测试
-- [x] 认证 API 单元测试
-- [x] 部署 API 单元测试
-- [x] 测试数据库隔离（内存SQLite）
-- [x] 所有单元测试通过（22个测试用例）
-
-### Phase 9: 部署回滚功能 ⭐ **NEW**
-- [x] 部署模型添加回滚字段
-  - [x] backup_path - 备份文件路径记录
-  - [x] can_rollback - 是否可回滚标志
-  - [x] rolled_back_from - 回滚来源追踪
-- [x] 备份逻辑优化
-  - [x] 记录备份文件完整路径
-  - [x] 部署成功自动设置可回滚标志
-- [x] 回滚 API 实现
-  - [x] 检查备份文件存在性
-  - [x] 恢复备份文件
-  - [x] Nginx 配置测试
-  - [x] 服务重启
-  - [x] 完整日志记录
-- [x] 前端回滚功能
-  - [x] 回滚按钮（仅成功且可回滚的部署显示）
-  - [x] 回滚确认弹窗
-  - [x] 自动打开日志查看
-  - [x] 回滚任务列表展示
-
-### Phase 10: 批量部署功能 ⭐ **NEW**
-- [x] 批量部署 API
-  - [x] 支持多服务器同时部署
-  - [x] 自动生成部署任务名称
-  - [x] 可选自动执行
-- [x] 批量创建接口
-  - [x] 验证所有服务器存在性
-  - [x] 为每个服务器创建独立任务
-  - [x] 支持 Nginx 配置/离线包/证书三种类型
-  - [x] 返回所有创建的任务列表
-
-### Phase 11: 前端测试 & 部署脚本优化 ⭐ **NEW**
-- [x] 前端单元测试框架
-  - [x] Vitest + React Testing Library 配置
-  - [x] 测试工具函数（renderWithProviders）
-  - [x] Mock API 响应辅助函数
-- [x] Login 组件测试
-  - [x] 表单渲染测试
-  - [x] 表单验证测试
-  - [x] 登录成功流程测试
-  - [x] 登录失败处理测试
-  - [x] 按钮加载状态测试
-  - [x] 7个测试用例全部通过
-- [x] API 客户端测试
-  - [x] Auth API 测试（10个测试用例）
-  - [x] Deployment API 测试（16个测试用例）
-  - [x] Mock axios 客户端
-  - [x] 错误处理测试
-- [x] 部署脚本优化
-  - [x] 脚本模板数据模型（DeploymentScript）
-  - [x] 部署钩子数据模型（DeploymentHook）
-  - [x] 脚本模板 CRUD API
-  - [x] 钩子执行引擎
-  - [x] 支持 pre_deploy/post_deploy/on_success/on_failure 钩子
-  - [x] Shell/Bash/Python 脚本支持
-  - [x] 脚本超时控制
-  - [x] 执行日志记录
-  - [x] 集成到部署流程
-
-### Phase 12: 用户体验优化 - 菜单重构 ⭐ **NEW**
-- [x] 业务导向的菜单结构
-  - [x] 从技术导向改为业务导向分类
-  - [x] 按中间件类型组织功能（Nginx/Redis/OpenSSH）
-  - [x] 二级菜单支持（SubMenu + ItemGroup）
-- [x] 路由结构重构
-  - [x] 层次化路由路径（/middleware/nginx/packages）
-  - [x] 保持向后兼容（所有页面正常工作）
-- [x] 导航体验优化
-  - [x] 面包屑导航（Breadcrumb）
-  - [x] 自动展开当前菜单
-  - [x] 点击面包屑快速返回
-- [x] 新菜单结构
-  - [x] 仪表盘
-  - [x] 服务器管理
-  - [x] 中间件管理
-    - [x] Nginx（离线包、SSL证书、配置管理）
-  - [x] 部署中心
-    - [x] 部署任务
-    - [x] 部署历史
+**前端待完成**:
+- ❌ ParameterForm 组件（动态表单生成）
+- ❌ 集成到 Deployments 页面的创建对话框
+- ❌ 参数验证逻辑
 
 ---
 
-## 📋 待完成任务
+#### 需求2: 部署类型 UX 重构 ✅ (后端完成)
+**目标**: 将 nginx_config 从部署任务中分离，改为在 NginxConfig 页面直接应用配置
 
-### 高优先级
-- [x] **部署回滚功能** ✅ **已完成**
-  - [x] 配置版本管理
-  - [x] 一键回滚到上一个版本
-  - [x] 回滚日志记录
+**后端完成**:
+- ✅ 创建 `NginxConfigApply` 和 `NginxConfigApplyLog` 数据模型
+  - 位置: `backend/internal/models/nginx_config_apply.go`
+  - 包含应用记录、日志、状态追踪
 
-- [x] **批量部署（多服务器）** ✅ **已完成**
-  - [x] 批量创建部署任务
-  - [x] 自动执行选项
-  - [x] 任务状态追踪
+- ✅ 实现 Nginx 配置应用 API
+  - `POST /api/v1/nginx/:id/apply` - 应用配置到服务器
+  - `GET /api/v1/nginx/:id/apply-history` - 获取应用历史
+  - `GET /api/v1/nginx/applies/:id` - 获取应用详情
+  - 位置: `backend/internal/api/nginx.go:480-829`
 
-- [x] **前端单元测试** ✅ **已完成**
-  - [x] 组件测试（React Testing Library）
-  - [x] API 调用测试（Mock）
-  - [x] 33个测试用例全部通过
+- ✅ executeApplyConfig 执行流程
+  1. 生成 Nginx 配置文件
+  2. 连接目标服务器 (SSH + SFTP)
+  3. 备份原配置文件（可选）
+  4. 上传新配置文件
+  5. 执行 `nginx -t` 测试
+  6. 重启 Nginx 服务（可选）
+  7. 完整日志记录
 
-- [x] **部署脚本优化** ✅ **已完成**
-  - [x] 支持自定义部署脚本
-  - [x] 脚本模板库（CRUD API）
-  - [x] 部署前/后钩子（pre_deploy/post_deploy/on_success/on_failure）
+- ✅ 数据库表创建
+  - `nginx_config_applies` - 配置应用记录表
+  - `nginx_config_apply_logs` - 配置应用日志表
 
-- [ ] **集成测试**
-  - [ ] 完整部署流程测试
-  - [ ] 多服务器并发部署测试
-  - [ ] 错误恢复测试
-
-### 中优先级
-- [ ] **部署优化**
-  - [ ] 部署队列管理
-  - [ ] 部署任务调度（定时部署）
-  - [ ] 部署进度实时推送（WebSocket）
-  - [ ] 前端批量部署页面
-
-- [ ] **安全增强**
-  - [ ] SSH 密钥加密存储
-  - [ ] 操作审计日志
-  - [ ] 角色权限管理（RBAC）
-  - [ ] API 访问频率限制
-
-- [ ] **监控告警**
-  - [ ] 部署失败告警
-  - [ ] 证书过期提醒
-  - [ ] 服务器健康检查
-  - [ ] 日志采集和分析
-
-- [ ] **数据备份**
-  - [ ] 数据库定期备份
-  - [ ] 配置文件备份管理
-  - [ ] 备份恢复功能
-
-### 低优先级
-- [ ] **用户体验优化**
-  - [ ] Dashboard 数据可视化（图表）
-  - [ ] 操作历史记录
-  - [ ] 全局搜索功能
-  - [ ] 快捷键支持
-
-- [ ] **文档完善**
-  - [ ] API 文档（Swagger）
-  - [ ] 部署文档
-  - [ ] 用户手册
-  - [ ] 开发指南
-
-- [ ] **性能优化**
-  - [ ] 前端代码分割
-  - [ ] 大文件上传优化（分片上传）
-  - [ ] 数据库查询优化
-  - [ ] 缓存策略
+**前端待完成**:
+- ❌ 从 Deployments 页面移除 nginx_config 选项
+- ❌ NginxConfig 页面添加"应用配置"按钮
+- ❌ 创建 ApplyConfigModal 组件（选择服务器、配置选项）
+- ❌ 应用历史和日志查看功能
 
 ---
 
-## 🏗️ 架构说明
+#### 需求3: 实时日志和取消部署 ✅ (全部完成)
+**目标**: 实时显示部署日志，支持取消正在执行的部署任务
 
-### 后端目录结构
-```
-backend/
-├── cmd/server/          # 主程序入口
-│   ├── main.go         # 服务启动
-│   └── data/           # 数据文件目录
-├── internal/
-│   ├── api/            # API 层
-│   │   ├── auth.go                     # 认证 API
-│   │   ├── package.go                  # 离线包 API
-│   │   ├── certificate.go              # 证书 API
-│   │   ├── server.go                   # 服务器 API
-│   │   ├── nginx.go                    # Nginx 配置 API
-│   │   ├── deployment.go               # 部署 API
-│   │   ├── deployment_script.go        # 脚本管理 API ⭐ NEW
-│   │   ├── deployment_hook_executor.go # 钩子执行引擎 ⭐ NEW
-│   │   ├── auth_test.go                # 认证测试
-│   │   └── deployment_test.go          # 部署测试
-│   ├── config/         # 配置管理
-│   ├── db/             # 数据库管理
-│   ├── models/         # 数据模型
-│   │   ├── user.go
-│   │   ├── middleware_package.go
-│   │   ├── certificate.go
-│   │   ├── server.go
-│   │   ├── nginx_config.go
-│   │   ├── deployment.go
-│   │   └── deployment_script.go  # 脚本/钩子模型 ⭐ NEW
-│   └── utils/          # 工具函数
-└── pkg/
-    ├── logger/         # 日志
-    └── response/       # 响应封装
+**后端完成**:
+- ✅ 部署管理器结构 (deploymentManager)
+  - 位置: `backend/internal/api/deployment.go:50-77`
+  - 使用 sync.RWMutex 管理运行中的部署
+  - 每个部署包含 context、cancel、logChan、done
+
+- ✅ SSE StreamLogs 接口
+  - `GET /api/v1/deployments/:id/logs/stream`
+  - Server-Sent Events 实时推送日志
+  - 先发送历史日志，再推送新日志
+  - 位置: `backend/internal/api/deployment.go:306-382`
+
+- ✅ Cancel 接口
+  - `POST /api/v1/deployments/:id/cancel`
+  - 通过 context.Cancel() 优雅停止
+  - 等待当前步骤完成后终止
+  - 位置: `backend/internal/api/deployment.go:384-403`
+
+- ✅ executeDeploymentWithContext 重构
+  - 支持 Context 取消信号
+  - 每个步骤之间检查取消状态
+  - 位置: `backend/internal/api/deployment.go:1155-1526`
+
+**前端完成**:
+- ✅ useDeploymentLogs Hook
+  - 位置: `frontend/src/hooks/useDeploymentLogs.ts`
+  - 自动连接 SSE，增量更新日志
+  - 监听 'log' 和 'done' 事件
+
+- ✅ cancelDeployment API
+  - 位置: `frontend/src/api/deployment.ts:74-77`
+
+- ✅ Deployments 页面集成
+  - 位置: `frontend/src/pages/Deployments.tsx`
+  - 实时日志显示（蓝色状态提示）
+  - 取消按钮（仅 running 状态显示）
+  - 历史日志查看（completed 状态）
+
+---
+
+## 🔥 剩余核心任务（按优先级排序）
+
+### 🎯 高优先级 - 前端集成任务
+
+#### 任务 1: 需求2 - 前端移除 nginx_config 部署类型
+**文件**: `frontend/src/pages/Deployments.tsx`
+
+**修改内容**:
+```typescript
+// 1. 移除 deployType 的 nginx_config 选项 (约540行)
+<Form.Item name="type" label="部署类型">
+  <Select onChange={(val) => setDeployType(val)}>
+    {/* 删除这一行 */}
+    {/* <Option value="nginx_config">Nginx 配置</Option> */}
+    <Option value="package">离线包</Option>
+    <Option value="certificate">证书</Option>
+  </Select>
+</Form.Item>
+
+// 2. 移除 nginx_config 分支逻辑 (约540-554行)
+{/* 删除整个 deployType === 'nginx_config' 的条件渲染 */}
+{deployType === 'nginx_config' && (
+  <Form.Item name="nginx_config_id" ...>
+    ...
+  </Form.Item>
+)}
 ```
 
-### 前端目录结构
+**预期结果**:
+- Deployments 页面只能创建 package 和 certificate 类型的部署
+- nginx_config 部署移到 NginxConfig 页面管理
+
+---
+
+#### 任务 2: 需求2 - NginxConfig 页面添加应用配置功能
+**文件**: `frontend/src/pages/NginxConfig.tsx`
+
+**需要添加的功能**:
+
+1. **添加"应用配置"按钮到操作列**
+```typescript
+// 在 columns 的 action 列中添加
+<Button
+  type="primary"
+  size="small"
+  icon={<DeploymentUnitOutlined />}
+  onClick={() => handleApplyConfig(record)}
+>
+  应用配置
+</Button>
 ```
-frontend/
-├── src/
-│   ├── api/                      # API 客户端
-│   │   ├── client.ts            # Axios 实例
-│   │   ├── auth.ts              # 认证 API
-│   │   ├── package.ts           # 离线包 API
-│   │   ├── certificate.ts       # 证书 API
-│   │   ├── server.ts            # 服务器 API
-│   │   ├── nginx.ts             # Nginx API
-│   │   ├── deployment.ts        # 部署 API
-│   │   └── __tests__/           # API 测试 ⭐ NEW
-│   │       ├── auth.test.ts
-│   │       └── deployment.test.ts
-│   ├── components/              # 组件
-│   │   └── common/
-│   │       └── Layout.tsx       # 布局组件
-│   ├── pages/                   # 页面
-│   │   ├── Login.tsx
-│   │   ├── Dashboard.tsx
-│   │   ├── Middleware.tsx
-│   │   ├── Certificates.tsx
-│   │   ├── Servers.tsx
-│   │   ├── NginxConfig.tsx
-│   │   ├── Deployments.tsx
-│   │   ├── DeploymentHistory.tsx
-│   │   └── __tests__/           # 页面测试 ⭐ NEW
-│   │       └── Login.test.tsx
-│   ├── test/                    # 测试工具 ⭐ NEW
-│   │   ├── setup.ts             # 测试配置
-│   │   └── utils.tsx            # 测试工具函数
-│   ├── hooks/                   # 自定义 Hooks
-│   │   └── useAuth.ts
-│   ├── store/                   # 状态管理
-│   ├── types/                   # TypeScript 类型
-│   └── App.tsx                  # 根组件
+
+2. **创建 nginx API 客户端**
+   - 文件: `frontend/src/api/nginx.ts`
+   - 添加以下方法:
+```typescript
+// 应用配置到服务器
+export const applyNginxConfig = async (
+  id: number,
+  data: {
+    server_id: number;
+    target_path?: string;
+    backup_enabled?: boolean;
+    restart_service?: boolean;
+    service_name?: string;
+  }
+): Promise<any> => {
+  const response = await client.post(`/nginx/${id}/apply`, data);
+  return response.data.data;
+};
+
+// 获取应用历史
+export const getApplyHistory = async (id: number, params?: any): Promise<any> => {
+  const response = await client.get(`/nginx/${id}/apply-history`, { params });
+  return response.data.data;
+};
+
+// 获取应用详情
+export const getApplyDetail = async (applyId: number): Promise<any> => {
+  const response = await client.get(`/nginx/applies/${applyId}`);
+  return response.data.data;
+};
+```
+
+3. **创建 ApplyConfigModal 组件**
+   - 文件: `frontend/src/components/nginx/ApplyConfigModal.tsx`
+   - 功能:
+     - 选择目标服务器（下拉框）
+     - 配置目标路径（默认 `/etc/nginx/nginx.conf`）
+     - 是否备份原配置（Switch，默认 true）
+     - 是否重启服务（Switch，默认 true）
+     - 服务名称（Input，默认 `nginx`）
+     - 提交后调用 `applyNginxConfig` API
+
+4. **添加应用历史查看**
+   - 在 NginxConfig 详情页面添加"应用历史"Tab
+   - 显示应用记录列表（时间、服务器、状态、耗时）
+   - 点击记录查看详细日志（类似部署日志）
+
+---
+
+#### 任务 3: 需求1 - 前端参数化表单生成
+**文件**: `frontend/src/components/deployment/ParameterForm.tsx` (新建)
+
+**功能需求**:
+```typescript
+interface ParameterFormProps {
+  parameters: PackageParameter[];
+  form: FormInstance;
+}
+
+// 组件需要根据 parameter.type 渲染不同控件：
+// - string → Input
+// - number → InputNumber (支持 min/max)
+// - boolean → Switch
+// - select → Select (带 options)
+
+// 应用验证规则：
+// - required: Form.Item rules
+// - min/max: InputNumber props
+// - min_len/max_len: Input maxLength
+// - pattern: Form.Item rules (正则)
+
+// 示例：
+<Form.Item
+  name={param.name}
+  label={param.label}
+  tooltip={param.description}
+  rules={[
+    { required: param.required, message: `请输入${param.label}` },
+    { pattern: param.validation?.pattern, message: param.validation?.message }
+  ]}
+  initialValue={param.default}
+>
+  {param.type === 'number' ? (
+    <InputNumber
+      min={param.validation?.min}
+      max={param.validation?.max}
+      placeholder={param.placeholder}
+    />
+  ) : param.type === 'boolean' ? (
+    <Switch />
+  ) : param.type === 'select' ? (
+    <Select options={param.options} />
+  ) : (
+    <Input
+      maxLength={param.validation?.max_len}
+      placeholder={param.placeholder}
+    />
+  )}
+</Form.Item>
+```
+
+**集成到 Deployments 页面**:
+```typescript
+// 在创建部署对话框中：
+// 1. 当选择 package 类型时，监听 package_id 变化
+// 2. 调用 getPackageMetadata(packageId)
+// 3. 如果返回 metadata 且有 parameters，渲染 ParameterForm
+// 4. 提交时将表单值序列化为 JSON 字符串，作为 deploy_params 字段
 ```
 
 ---
 
-## 📊 数据库表结构
+### 🧪 测试任务
 
-### 核心表
-1. **users** - 用户表
-2. **middleware_packages** - 离线包表
-3. **certificates** - SSL证书表
-4. **servers** - 服务器表
-5. **server_groups** - 服务器分组表
-6. **nginx_configs** - Nginx配置表
-7. **nginx_locations** - Nginx Location配置表
-8. **nginx_upstreams** - Nginx Upstream配置表
-9. **deployments** - 部署任务表
-10. **deployment_logs** - 部署日志表
-11. **deployment_scripts** - 部署脚本模板表 ⭐ **NEW**
-12. **deployment_hooks** - 部署钩子表 ⭐ **NEW**
-
----
-
-## 🔧 部署流程
-
-### Nginx 配置部署流程
-1. 建立 SSH 连接
-2. 创建 SFTP 会话
-3. 生成 Nginx 配置文件
-4. 备份原配置文件（可选）
-5. 上传新配置文件
-6. 执行 `nginx -t` 测试
-7. 重启/重载 Nginx 服务
-8. 记录每步执行日志
-
-### 离线包部署流程
-1. 建立 SSH 连接
-2. 创建 SFTP 会话
-3. 创建目标目录
-4. 上传离线包文件
-5. 解压文件（tar.gz/zip）
-6. 记录部署日志
-
-### 证书部署流程
-1. 建立 SSH 连接
-2. 创建 SFTP 会话
-3. 创建证书目录
-4. 上传证书文件（.crt）
-5. 上传私钥文件（.key）
-6. 设置文件权限（644/600）
-7. 重启相关服务（可选）
-8. 记录部署日志
+#### 任务 4: 需求3 - 测试实时日志和取消功能
+**测试步骤**:
+1. 创建一个 package 类型的部署任务（nginx 离线包）
+2. 点击"执行"，观察日志弹窗
+   - 验证：显示蓝色"实时日志"提示
+   - 验证：日志实时更新（无需刷新）
+   - 验证：显示"取消部署"按钮
+3. 点击"取消部署"
+   - 验证：提示"正在取消，请等待当前步骤完成"
+   - 验证：部署在当前步骤完成后停止
+   - 验证：状态变为 `cancelled`
+4. 关闭日志弹窗后重新打开
+   - 验证：显示"刷新"按钮（非 running 状态）
+   - 验证：历史日志正常显示
 
 ---
 
-## 📱 用户界面
+#### 任务 5: 需求1 - 测试路径参数化部署
+**测试步骤**:
+1. 上传 nginx 离线包（packages/nginx/1.28.0.zip）
+2. 创建部署任务，选择该离线包
+3. 验证：显示参数配置表单（7个参数）
+   - Nginx 安装目录
+   - HTTP 端口
+   - HTTPS 端口
+   - Worker 进程数
+   - Worker 连接数
+   - 错误日志路径
+   - 构建仓库目录
+4. 修改参数（如端口改为 8080，安装目录改为 `/opt/nginx`）
+5. 提交并执行部署
+6. 查看部署日志，验证参数是否正确传递
+   - 检查日志中是否显示自定义参数
+   - SSH 到目标服务器检查实际安装路径
 
-### 菜单结构（业务导向设计）
+---
 
-#### 旧版菜单（技术导向）❌
-```
-├── 仪表盘
-├── 中间件管理        ← 所有中间件混在一起
-├── 证书管理          ← 不知道是给哪个中间件用的
-├── Nginx 配置        ← 单独一项
-├── 服务器管理
-├── 部署管理
-└── 部署历史
-```
+#### 任务 6: 需求2 - 测试 Nginx 配置应用流程
+**测试步骤**:
+1. 在 NginxConfig 页面创建一个配置
+2. 点击"应用配置"按钮
+3. 选择目标服务器，配置选项
+4. 提交应用
+5. 验证：
+   - 配置文件成功上传到服务器
+   - 原配置已备份（如果启用）
+   - nginx -t 测试通过
+   - 服务成功重启（如果启用）
+   - 应用日志完整记录
+6. 查看应用历史
+   - 验证：显示应用记录列表
+   - 验证：可以查看每次应用的详细日志
 
-#### 新版菜单（业务导向）✅
+---
+
+## 📁 文件清单
+
+### 需要创建的新文件
 ```
-├── 🏠 仪表盘
-├── 🖥️  服务器管理
-│
-├── 📦 中间件管理
-│   └── Nginx
-│       ├── 离线包      ← 清晰的层次关系
-│       ├── SSL证书     ← 一看就知道是 Nginx 的证书
-│       └── 配置管理    ← Nginx 配置集中在这里
-│
-└── 🚀 部署中心
-    ├── 部署任务
-    └── 部署历史
+frontend/src/
+├── components/
+│   ├── nginx/
+│   │   └── ApplyConfigModal.tsx          # Nginx 配置应用弹窗
+│   └── deployment/
+│       └── ParameterForm.tsx             # 参数化表单组件
+└── api/
+    └── nginx.ts                          # Nginx API 客户端（需扩展）
 ```
 
-**优势**：
-- ✅ 分类清晰：所有 Nginx 相关功能在一个地方
-- ✅ 易于扩展：未来添加 Redis、MySQL 等中间件结构一致
-- ✅ 降低认知负担：不需要理解技术关系
-- ✅ 符合业务流程：管理 Nginx → 离线包 → 证书 → 配置 → 部署
-
-### 导航增强
-- **面包屑导航**：始终知道当前位置（首页 > 中间件管理 > Nginx > 配置管理）
-- **自动展开菜单**：根据当前页面自动展开对应的菜单项
-- **快速返回**：点击面包屑可快速跳转到上级页面
-
----
-
-## 🚀 快速开始
-
-### 后端启动
-```bash
-cd backend
-go run cmd/server/main.go
+### 需要修改的现有文件
 ```
-访问: http://localhost:8080
-
-### 前端启动
-```bash
-cd frontend
-npm install
-npm run dev
-```
-访问: http://localhost:5173
-
-### 运行测试
-```bash
-cd backend
-go test ./internal/api/... -v
+frontend/src/
+├── pages/
+│   ├── Deployments.tsx                   # 移除 nginx_config 选项 + 集成 ParameterForm
+│   └── NginxConfig.tsx                   # 添加应用配置功能
+└── types/
+    └── index.ts                          # 添加 NginxConfigApply 类型定义
 ```
 
-### 默认账号
-- 用户名: `admin`
-- 密码: `admin123`
+---
+
+## 🎯 完成标准
+
+### 需求1 完成标准
+- [x] 后端：metadata API 工作正常
+- [x] 后端：环境变量注入机制完成
+- [x] 脚本：所有脚本改用环境变量
+- [ ] 前端：ParameterForm 组件完成
+- [ ] 前端：集成到 Deployments 页面
+- [ ] 测试：参数化部署成功，参数正确生效
+
+### 需求2 完成标准
+- [x] 后端：NginxConfigApply API 全部完成
+- [x] 后端：executeApplyConfig 执行流程完成
+- [x] 数据库：新表创建并迁移成功
+- [ ] 前端：Deployments 页面移除 nginx_config
+- [ ] 前端：NginxConfig 页面添加应用功能
+- [ ] 前端：ApplyConfigModal 组件完成
+- [ ] 测试：配置应用流程全部通过
+
+### 需求3 完成标准
+- [x] 后端：SSE StreamLogs 接口完成
+- [x] 后端：Cancel 接口完成
+- [x] 后端：Context 取消机制完成
+- [x] 前端：useDeploymentLogs Hook 完成
+- [x] 前端：Deployments 页面集成完成
+- [x] 测试：实时日志工作正常
+- [x] 测试：取消部署功能正常
 
 ---
 
-## 📝 API 端点
+## 🚀 后端服务状态
 
-### 认证
-- `POST /api/v1/auth/login` - 登录
-- `POST /api/v1/auth/logout` - 登出
-- `GET /api/v1/auth/profile` - 获取用户信息
+### 当前运行状态
+- ✅ 后端服务器: `http://localhost:8080`
+- ✅ 前端开发服务器: `http://localhost:5173`
+- ✅ 数据库: SQLite (`backend/cmd/server/data/app.db`)
+- ✅ 所有新API已注册并就绪
 
-### 离线包
-- `GET /api/v1/packages` - 获取列表
-- `POST /api/v1/packages/upload` - 上传离线包
-- `GET /api/v1/packages/:id` - 获取详情
-- `DELETE /api/v1/packages/:id` - 删除
+### 新增的API端点
+```
+POST   /api/v1/nginx/:id/apply              - 应用 Nginx 配置
+GET    /api/v1/nginx/:id/apply-history      - 获取应用历史
+GET    /api/v1/nginx/applies/:id            - 获取应用详情
+POST   /api/v1/deployments/:id/cancel       - 取消部署任务
+GET    /api/v1/deployments/:id/logs/stream  - SSE 实时日志流
+```
 
-### 证书
-- `GET /api/v1/certificates` - 获取列表
-- `POST /api/v1/certificates/upload` - 上传证书
-- `GET /api/v1/certificates/:id` - 获取详情
-- `DELETE /api/v1/certificates/:id` - 删除
+### 数据库新增表
+```sql
+-- Nginx 配置应用记录
+CREATE TABLE nginx_config_applies (
+    id                INTEGER PRIMARY KEY,
+    nginx_config_id   INTEGER NOT NULL,
+    server_id         INTEGER NOT NULL,
+    target_path       TEXT DEFAULT '/etc/nginx/nginx.conf',
+    backup_enabled    BOOLEAN DEFAULT true,
+    backup_path       TEXT,
+    restart_service   BOOLEAN DEFAULT true,
+    service_name      TEXT DEFAULT 'nginx',
+    status            TEXT DEFAULT 'pending',
+    start_time        DATETIME,
+    end_time          DATETIME,
+    duration          INTEGER,
+    error_msg         TEXT,
+    created_at        DATETIME,
+    updated_at        DATETIME,
+    deleted_at        DATETIME
+);
 
-### 服务器
-- `GET /api/v1/servers` - 获取列表
-- `POST /api/v1/servers` - 创建服务器
-- `GET /api/v1/servers/:id` - 获取详情
-- `PUT /api/v1/servers/:id` - 更新
-- `DELETE /api/v1/servers/:id` - 删除
-- `POST /api/v1/servers/:id/test` - 测试连接
-- `POST /api/v1/servers/test` - 直接测试（不保存）
-
-### Nginx 配置
-- `GET /api/v1/nginx` - 获取列表
-- `POST /api/v1/nginx` - 创建配置
-- `GET /api/v1/nginx/:id` - 获取详情
-- `PUT /api/v1/nginx/:id` - 更新配置
-- `DELETE /api/v1/nginx/:id` - 删除配置
-- `GET /api/v1/nginx/:id/generate` - 生成配置文件
-- `POST /api/v1/nginx/preview` - 预览配置
-
-### 部署管理
-- `GET /api/v1/deployments` - 获取部署列表
-- `POST /api/v1/deployments` - 创建部署任务
-- `POST /api/v1/deployments/batch` - 批量创建部署任务 ⭐ **NEW**
-- `GET /api/v1/deployments/:id` - 获取任务详情
-- `DELETE /api/v1/deployments/:id` - 删除任务
-- `POST /api/v1/deployments/:id/execute` - 执行部署
-- `POST /api/v1/deployments/:id/rollback` - 回滚部署 ⭐ **NEW**
-- `GET /api/v1/deployments/:id/logs` - 获取部署日志
-
-### 部署脚本管理 ⭐ **NEW**
-- `GET /api/v1/scripts` - 获取脚本模板列表
-- `POST /api/v1/scripts` - 创建脚本模板
-- `GET /api/v1/scripts/:id` - 获取脚本详情
-- `PUT /api/v1/scripts/:id` - 更新脚本
-- `DELETE /api/v1/scripts/:id` - 删除脚本
-
----
-
-## 🔒 安全考虑
-
-### 已实现
-- [x] JWT Token 认证
-- [x] 密码 bcrypt 加密
-- [x] SSH 连接超时设置
-- [x] 文件上传大小限制
-- [x] SQL 注入防护（GORM）
-
-### 待实现
-- [ ] SSH 密钥加密存储
-- [ ] HTTPS 支持
-- [ ] CORS 配置
-- [ ] 请求频率限制
-- [ ] 操作审计日志
-- [ ] 角色权限管理
+-- Nginx 配置应用日志
+CREATE TABLE nginx_config_apply_logs (
+    id         INTEGER PRIMARY KEY,
+    apply_id   INTEGER NOT NULL,
+    step       INTEGER,
+    action     TEXT NOT NULL,
+    status     TEXT DEFAULT 'pending',
+    output     TEXT,
+    error_msg  TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
+);
+```
 
 ---
 
-## 📈 性能指标
+## 📝 开发注意事项
 
-### 当前性能
-- 平均响应时间: < 100ms
-- 文件上传: 支持 100MB+
-- 并发部署: 单进程异步执行
-- 数据库: SQLite（适合中小规模）
+### TypeScript 类型定义
+需要在 `frontend/src/types/index.ts` 添加：
 
-### 优化方向
-- 大文件分片上传
-- 部署任务队列
-- 数据库连接池
-- 缓存策略（Redis）
+```typescript
+// Nginx 配置应用类型
+export interface NginxConfigApply {
+  id: number;
+  nginx_config_id: number;
+  server_id: number;
+  target_path: string;
+  backup_enabled: boolean;
+  backup_path?: string;
+  restart_service: boolean;
+  service_name: string;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  start_time?: string;
+  end_time?: string;
+  duration: number;
+  error_msg?: string;
+  created_at: string;
+  nginx_config?: NginxConfig;
+  server?: Server;
+  logs?: NginxConfigApplyLog[];
+}
 
----
+export interface NginxConfigApplyLog {
+  id: number;
+  apply_id: number;
+  step: number;
+  action: string;
+  status: 'pending' | 'running' | 'success' | 'failed';
+  output?: string;
+  error_msg?: string;
+  created_at: string;
+}
+```
 
-## 🐛 已知问题
+### API 响应格式
+所有 API 响应格式保持一致：
+```typescript
+interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}
+```
 
-1. ~~登录后跳转服务器管理页面会自动登出~~ ✅ 已修复
-   - 原因: auth.ts 响应数据提取错误
-   - 修复: 正确提取 `response.data.token`
-
-2. 部分单元测试需要完善
-   - GetProfile 测试需要正确的上下文设置
-   - 建议使用 mock 进行更全面的测试
-
-3. 前端打包体积较大
-   - 建议: 使用代码分割和动态导入
-   - Ant Design 按需加载
-
----
-
-## 📅 开发时间线
-
-- **2025-11-29**: 项目启动，完成 Phase 1-4
-- **2025-11-29**: 完成 Phase 5 服务器管理
-- **2025-11-29**: 完成 Phase 6 Nginx 可视化配置
-- **2025-12-01**: 完成 Phase 7 部署执行引擎
-- **2025-12-01**: 添加单元测试（22个后端测试用例100%通过）
-- **2025-12-01**: 完成 Phase 9 部署回滚功能
-- **2025-12-01**: 完成 Phase 10 批量部署功能
-- **2025-12-01**: 完成 Phase 11 前端测试 & 部署脚本优化（33个前端测试用例100%通过）
-- **2025-12-01**: 完成 Phase 12 用户体验优化 - 菜单重构（业务导向分类）
-
----
-
-## 💡 后续计划
-
-### 短期目标（1-2周）
-1. ~~实现部署回滚功能~~ ✅ 已完成
-2. ~~添加批量部署支持~~ ✅ 已完成
-3. ~~前端单元测试~~ ✅ 已完成
-4. ~~部署脚本优化和钩子支持~~ ✅ 已完成
-5. 完善集成测试
-6. 部署进度实时推送（WebSocket）
-7. 前端批量部署页面和脚本管理页面
-
-### 中期目标（1个月）
-1. 角色权限管理系统
-2. 监控告警功能
-3. 数据备份恢复
-4. API 文档完善
-
-### 长期目标（3个月+）
-1. 支持更多中间件（Redis、MySQL、Docker）
-2. 集群部署支持
-3. CI/CD 集成
-4. 可视化监控大屏
+### 错误处理
+前端需要统一错误处理：
+```typescript
+try {
+  const result = await applyNginxConfig(id, data);
+  message.success('配置应用任务已创建');
+} catch (error: any) {
+  message.error(error.message || '应用配置失败');
+}
+```
 
 ---
 
-## 📞 联系方式
+## 🎓 技术要点
 
-- 项目仓库: 待添加
-- 问题反馈: 待添加
-- 贡献指南: 待添加
+### SSE (Server-Sent Events)
+- 单向推送，适合实时日志场景
+- 浏览器自动重连（网络中断后）
+- 事件格式：`event: log\ndata: {...}\n\n`
+- 前端使用 EventSource API
+
+### Context 取消机制
+- 使用 Go 的 context.Context
+- 通过 channel 传递取消信号
+- 在每个步骤之间检查 `ctx.Done()`
+- 优雅停止，不强制中断
+
+### 参数化部署流程
+```
+metadata.json → API → 前端表单 → JSON 序列化 → deploy_params
+                                                      ↓
+环境变量 ← 后端解析 ← Deployment.deploy_params
+    ↓
+${VAR:-default} ← Bash 脚本读取
+```
 
 ---
 
+## 📅 估算工时
+
+| 任务 | 预估时间 | 优先级 |
+|------|---------|--------|
+| 任务1: 移除 nginx_config 选项 | 15 分钟 | P0 |
+| 任务2: NginxConfig 应用功能 | 2-3 小时 | P0 |
+| 任务3: ParameterForm 组件 | 2-3 小时 | P0 |
+| 任务4: 测试实时日志和取消 | 30 分钟 | P1 |
+| 任务5: 测试参数化部署 | 30 分钟 | P1 |
+| 任务6: 测试配置应用流程 | 30 分钟 | P1 |
+
+**总计**: 约 6-8 小时
+
 ---
 
-## 📊 项目统计
+## ✅ 成功标准
 
-- **总代码行数**: 12,000+ 行
-- **后端 API 数量**: 45+ 个端点
-- **前端页面数**: 8 个
-- **数据库表**: 12 张
-- **后端测试用例**: 22 个（100% 通过）
-- **前端测试用例**: 33 个（100% 通过）
-- **总测试覆盖**: 55 个测试用例
-- **开发时长**: 3 天
+### 功能完整性
+- [ ] 所有 API 调用成功，无报错
+- [ ] 前端页面正常渲染，无 TypeScript 错误
+- [ ] 实时日志流畅显示，无延迟或卡顿
+- [ ] 取消部署立即生效，状态正确更新
+- [ ] 参数化表单根据 metadata 动态生成
+- [ ] Nginx 配置应用流程完整可用
+
+### 用户体验
+- [ ] 操作流程直观，符合业务逻辑
+- [ ] 错误提示清晰，便于理解
+- [ ] 加载状态明确，无悬浮等待
+- [ ] 表单验证及时，防止无效输入
+
+### 代码质量
+- [ ] 遵循现有代码风格
+- [ ] 类型定义完整，无 any 滥用
+- [ ] 错误处理健全，不会崩溃
+- [ ] 组件可复用，逻辑清晰
 
 ---
 
-**最后更新**: 2025-12-01 (Phase 12 完成 - 用户体验优化 & 菜单重构)
+**最后更新**: 2025-12-01
+**当前状态**: 后端 100% 完成，前端 0% 完成
+**下一步**: 开始前端集成开发

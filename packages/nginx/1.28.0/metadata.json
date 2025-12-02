@@ -87,6 +87,15 @@
       "type": "boolean",
       "default": true,
       "required": false
+    },
+    {
+      "name": "BUILD_REPO_DIR",
+      "label": "构建仓库目录",
+      "description": "本地 YUM 仓库的存放目录",
+      "type": "string",
+      "default": "/data/buildrepo",
+      "required": false,
+      "placeholder": "/data/buildrepo"
     }
   ],
   "features": [

@@ -54,6 +54,8 @@ func AutoMigrate() error {
 		&models.NginxConfig{},
 		&models.NginxLocation{},
 		&models.NginxUpstream{},
+		&models.NginxConfigApply{},
+		&models.NginxConfigApplyLog{},
 		&models.Deployment{},
 		&models.DeploymentLog{},
 		&models.DeploymentScript{},

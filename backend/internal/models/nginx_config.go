@@ -54,8 +54,9 @@ type NginxConfig struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// 关联
-	Server      *Server      `json:"server,omitempty" gorm:"foreignKey:ServerID"`
-	Certificate *Certificate `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Server      *Server         `json:"server,omitempty" gorm:"foreignKey:ServerID"`
+	Certificate *Certificate    `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Locations   []NginxLocation `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
 }
 
 // TableName 表名

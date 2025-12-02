@@ -69,3 +69,9 @@ export const rollbackDeployment = async (id: number): Promise<{ message: string;
   const response = await client.post<ApiResponse<{ message: string; deployment: Deployment }>>(`/deployments/${id}/rollback`);
   return (response as unknown as ApiResponse<{ message: string; deployment: Deployment }>).data!;
 };
+
+// 取消部署
+export const cancelDeployment = async (id: number): Promise<{ message: string }> => {
+  const response = await client.post<ApiResponse<{ message: string }>>(`/deployments/${id}/cancel`);
+  return (response as unknown as ApiResponse<{ message: string }>).data!;
+};
