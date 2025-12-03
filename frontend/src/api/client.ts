@@ -1,5 +1,7 @@
 import axios from 'axios';
 import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { store } from '../store';
+import { logout } from '../store/authSlice';
 
 // API 基础配置
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
@@ -37,8 +39,8 @@ client.interceptors.response.use(
     if (error.response) {
       // 处理 401 未授权
       if (error.response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        // 同步更新 Redux store 和 localStorage
+        store.dispatch(logout());
         window.location.href = '/login';
       }
 
