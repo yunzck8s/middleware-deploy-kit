@@ -11,9 +11,8 @@ import {
   Popconfirm,
   Tag,
   Space,
-  Row,
-  Col,
   Tooltip,
+  Progress,
 } from 'antd';
 import {
   UploadOutlined,
@@ -21,6 +20,8 @@ import {
   ReloadOutlined,
   DownloadOutlined,
   SafetyCertificateOutlined,
+  SearchOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -42,9 +43,9 @@ const Certificates: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [certFile, setCertFile] = useState<UploadFile | null>(null);
   const [keyFile, setKeyFile] = useState<UploadFile | null>(null);
+  const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm();
 
-  // 加载证书列表
   const loadCertificates = async () => {
     try {
       setLoading(true);
@@ -62,13 +63,11 @@ const Certificates: React.FC = () => {
     loadCertificates();
   }, [page, pageSize]);
 
-  // 处理上传
   const handleUpload = async (values: any) => {
     if (!certFile || !keyFile) {
       message.error('请上传证书文件和密钥文件');
       return;
     }
-
     try {
       setUploading(true);
       await uploadCertificate({
@@ -90,7 +89,6 @@ const Certificates: React.FC = () => {
     }
   };
 
-  // 处理删除
   const handleDelete = async (id: number) => {
     try {
       await deleteCertificate(id);
@@ -101,7 +99,6 @@ const Certificates: React.FC = () => {
     }
   };
 
-  // 处理下载
   const handleDownload = async (id: number, type: 'cert' | 'key', name: string) => {
     try {
       const response = await downloadCertificateFile(id, type);
@@ -119,111 +116,133 @@ const Certificates: React.FC = () => {
     }
   };
 
-  // 计算剩余天数
   const getDaysUntilExpiry = (validUntil: string): number => {
     const expiry = new Date(validUntil);
     const now = new Date();
-    const diff = expiry.getTime() - now.getTime();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  // 获取状态标签
-  const getStatusTag = (status: string, validUntil: string) => {
-    if (status === 'expired') {
-      return <Tag color="red">已过期</Tag>;
-    }
-    const days = getDaysUntilExpiry(validUntil);
-    if (days < 30) {
-      return <Tag color="orange">即将过期 ({days}天)</Tag>;
-    }
-    return <Tag color="green">有效</Tag>;
+  const getTotalDays = (validFrom: string, validUntil: string): number => {
+    return Math.ceil((new Date(validUntil).getTime() - new Date(validFrom).getTime()) / (1000 * 60 * 60 * 24));
   };
+
+  const filteredCerts = certificates.filter((c) => {
+    if (!searchText) return true;
+    const lower = searchText.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(lower) ||
+      c.domain.toLowerCase().includes(lower)
+    );
+  });
 
   const columns: ColumnsType<Certificate> = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '证书名称',
+      title: '证书',
       dataIndex: 'name',
       key: 'name',
-      render: (text) => (
-        <Space>
-          <SafetyCertificateOutlined style={{ color: '#1890ff' }} />
-          <span style={{ fontWeight: 500 }}>{text}</span>
-        </Space>
+      render: (text, record) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <SafetyCertificateOutlined style={{ color: 'var(--color-primary)', fontSize: 16 }} />
+          <div>
+            <div style={{ fontWeight: 500 }}>{text}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+              {record.domain}
+            </div>
+          </div>
+        </div>
       ),
-    },
-    {
-      title: '域名',
-      dataIndex: 'domain',
-      key: 'domain',
     },
     {
       title: '颁发者',
       dataIndex: 'issuer',
       key: 'issuer',
       ellipsis: true,
-    },
-    {
-      title: '主题',
-      dataIndex: 'subject',
-      key: 'subject',
-      ellipsis: true,
+      render: (text) => (
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{text}</span>
+      ),
     },
     {
       title: '有效期',
       key: 'validity',
-      render: (_, record) => (
-        <div>
-          <div style={{ fontSize: '12px' }}>
-            起：{new Date(record.valid_from).toLocaleDateString('zh-CN')}
+      width: 200,
+      render: (_, record) => {
+        const days = getDaysUntilExpiry(record.valid_until);
+        const totalDays = getTotalDays(record.valid_from, record.valid_until);
+        const elapsed = totalDays - days;
+        const percent = totalDays > 0 ? Math.max(0, Math.min(100, Math.round((elapsed / totalDays) * 100))) : 100;
+        const isExpired = days <= 0;
+        const isExpiring = days > 0 && days <= 30;
+
+        return (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+              <span style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                {new Date(record.valid_from).toLocaleDateString('zh-CN')}
+              </span>
+              <span style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                {new Date(record.valid_until).toLocaleDateString('zh-CN')}
+              </span>
+            </div>
+            <Progress
+              percent={percent}
+              size="small"
+              showInfo={false}
+              strokeColor={isExpired ? '#EF4444' : isExpiring ? '#F59E0B' : '#10B981'}
+              trailColor="var(--bg-tertiary)"
+            />
           </div>
-          <div style={{ fontSize: '12px' }}>
-            止：{new Date(record.valid_until).toLocaleDateString('zh-CN')}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: '状态',
       key: 'status',
-      render: (_, record) => getStatusTag(record.status, record.valid_until),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (time: string) => new Date(time).toLocaleString('zh-CN'),
+      width: 140,
+      render: (_, record) => {
+        const days = getDaysUntilExpiry(record.valid_until);
+        if (record.status === 'expired' || days <= 0) {
+          return <Tag color="red">已过期</Tag>;
+        }
+        if (days <= 7) {
+          return (
+            <Tag color="red" icon={<WarningOutlined />}>
+              {days}天后过期
+            </Tag>
+          );
+        }
+        if (days <= 30) {
+          return (
+            <Tag color="orange" icon={<WarningOutlined />}>
+              {days}天后过期
+            </Tag>
+          );
+        }
+        return <Tag color="green">有效 ({days}天)</Tag>;
+      },
     },
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 160,
       render: (_, record) => (
-        <Space>
+        <Space size="small">
           <Tooltip title="下载证书">
             <Button
-              type="link"
+              type="text"
               icon={<DownloadOutlined />}
               size="small"
               onClick={() => handleDownload(record.id, 'cert', record.name)}
-            >
-              证书
-            </Button>
+              style={{ color: 'var(--color-primary)' }}
+            />
           </Tooltip>
           <Tooltip title="下载密钥">
             <Button
-              type="link"
+              type="text"
               icon={<DownloadOutlined />}
               size="small"
               onClick={() => handleDownload(record.id, 'key', record.name)}
-            >
-              密钥
-            </Button>
+              style={{ color: 'var(--color-secondary)' }}
+            />
           </Tooltip>
           <Popconfirm
             title="确定要删除这个证书吗？"
@@ -231,9 +250,7 @@ const Certificates: React.FC = () => {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small">
-              删除
-            </Button>
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
           </Popconfirm>
         </Space>
       ),
@@ -241,48 +258,59 @@ const Certificates: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Card
-            title="SSL 证书管理"
-            extra={
-              <Space>
-                <Button icon={<ReloadOutlined />} onClick={loadCertificates}>
-                  刷新
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<UploadOutlined />}
-                  onClick={() => setUploadModalVisible(true)}
-                >
-                  上传证书
-                </Button>
-              </Space>
-            }
-          >
-            <Table
-              columns={columns}
-              dataSource={certificates}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                current: page,
-                pageSize: pageSize,
-                total: total,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 个证书`,
-                onChange: (page, pageSize) => {
-                  setPage(page);
-                  setPageSize(pageSize);
-                },
-              }}
+    <div>
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <span style={{ fontWeight: 600 }}>SSL 证书管理</span>
+            <Input
+              prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              placeholder="搜索证书名或域名"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 200, background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
+              size="small"
+              allowClear
             />
-          </Card>
-        </Col>
-      </Row>
+          </div>
+        }
+        extra={
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={loadCertificates} size="small">
+              刷新
+            </Button>
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              onClick={() => setUploadModalVisible(true)}
+              size="small"
+            >
+              上传证书
+            </Button>
+          </Space>
+        }
+        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+      >
+        <Table
+          columns={columns}
+          dataSource={filteredCerts}
+          rowKey="id"
+          loading={loading}
+          size="middle"
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 个证书`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </Card>
 
-      {/* 上传证书对话框 */}
       <Modal
         title="上传 SSL 证书"
         open={uploadModalVisible}
@@ -297,32 +325,18 @@ const Certificates: React.FC = () => {
         width={600}
       >
         <Form form={form} layout="vertical" onFinish={handleUpload}>
-          <Form.Item
-            label="证书名称"
-            name="name"
-            rules={[{ required: true, message: '请输入证书名称' }]}
-          >
+          <Form.Item label="证书名称" name="name" rules={[{ required: true, message: '请输入证书名称' }]}>
             <Input placeholder="例如: example.com" />
           </Form.Item>
-
-          <Form.Item
-            label="域名"
-            name="domain"
-            extra="可选，如果不填写将从证书中自动提取"
-          >
+          <Form.Item label="域名" name="domain" extra="可选，如果不填写将从证书中自动提取">
             <Input placeholder="例如: example.com" />
           </Form.Item>
-
-          <Form.Item
-            label="证书文件 (.crt 或 .pem)"
-            required
-            help={certFile ? `已选择: ${certFile.name}` : '请选择证书文件'}
-          >
+          <Form.Item label="证书文件 (.crt 或 .pem)" required help={certFile ? `已选择: ${certFile.name}` : '请选择证书文件'}>
             <Upload
               beforeUpload={(file) => {
                 const ext = file.name.toLowerCase();
                 if (!ext.endsWith('.crt') && !ext.endsWith('.pem')) {
-                  message.error('证书文件格式不正确（需要 .crt 或 .pem）');
+                  message.error('格式不正确（需要 .crt 或 .pem）');
                   return false;
                 }
                 setCertFile(file);
@@ -335,17 +349,12 @@ const Certificates: React.FC = () => {
               <Button icon={<UploadOutlined />}>选择证书文件</Button>
             </Upload>
           </Form.Item>
-
-          <Form.Item
-            label="密钥文件 (.key 或 .pem)"
-            required
-            help={keyFile ? `已选择: ${keyFile.name}` : '请选择密钥文件'}
-          >
+          <Form.Item label="密钥文件 (.key 或 .pem)" required help={keyFile ? `已选择: ${keyFile.name}` : '请选择密钥文件'}>
             <Upload
               beforeUpload={(file) => {
                 const ext = file.name.toLowerCase();
                 if (!ext.endsWith('.key') && !ext.endsWith('.pem')) {
-                  message.error('密钥文件格式不正确（需要 .key 或 .pem）');
+                  message.error('格式不正确（需要 .key 或 .pem）');
                   return false;
                 }
                 setKeyFile(file);

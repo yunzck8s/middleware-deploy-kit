@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Layout as AntLayout, Menu, Dropdown, Avatar, message, Breadcrumb } from 'antd';
+import { Layout as AntLayout, Menu, Dropdown, Avatar, message, Breadcrumb, Input } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -15,25 +15,28 @@ import {
   InboxOutlined,
   FileTextOutlined,
   HomeOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { logout as logoutAction } from '../../store/authSlice';
 import { logout as logoutAPI } from '../../api/auth';
+import ThemeToggle from './ThemeToggle';
 
 const { Header, Sider, Content } = AntLayout;
 
 const MainLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [openKeys, setOpenKeys] = useState<string[]>(['middleware', 'deployments']);
+  const [openKeys, setOpenKeys] = useState<string[]>(['middleware']);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
   const { user } = useAuth();
 
-  // 获取面包屑路径
   const getBreadcrumbs = (pathname: string) => {
     const breadcrumbs: Array<{ title: React.ReactNode; path: string }> = [
-      { title: <HomeOutlined />, path: '/' }
+      { title: <HomeOutlined />, path: '/' },
     ];
 
     if (pathname === '/') {
@@ -42,33 +45,19 @@ const MainLayout = () => {
       breadcrumbs.push({ title: '服务器管理', path: '/servers' });
     } else if (pathname.startsWith('/middleware/')) {
       breadcrumbs.push({ title: '中间件管理', path: '' });
-
-      // 判断中间件类型
       let middlewareName = '';
-      if (pathname.includes('/nginx/')) {
-        middlewareName = 'Nginx';
-      } else if (pathname.includes('/redis/')) {
-        middlewareName = 'Redis';
-      } else if (pathname.includes('/openssh/')) {
-        middlewareName = 'OpenSSH';
-      }
+      if (pathname.includes('/nginx/')) middlewareName = 'Nginx';
+      else if (pathname.includes('/redis/')) middlewareName = 'Redis';
+      else if (pathname.includes('/openssh/')) middlewareName = 'OpenSSH';
 
       if (middlewareName) {
         breadcrumbs.push({ title: middlewareName, path: '' });
-
-        // 判断功能模块
-        if (pathname.includes('/packages')) {
-          breadcrumbs.push({ title: '离线包管理', path: pathname });
-        } else if (pathname.includes('/certificates')) {
-          breadcrumbs.push({ title: 'SSL证书', path: pathname });
-        } else if (pathname.includes('/configs')) {
-          breadcrumbs.push({ title: '配置管理', path: pathname });
-        } else if (pathname.includes('/deployments')) {
-          breadcrumbs.push({ title: '部署管理', path: pathname });
-        }
+        if (pathname.includes('/packages')) breadcrumbs.push({ title: '离线包管理', path: pathname });
+        else if (pathname.includes('/certificates')) breadcrumbs.push({ title: 'SSL证书', path: pathname });
+        else if (pathname.includes('/configs')) breadcrumbs.push({ title: '配置管理', path: pathname });
+        else if (pathname.includes('/deployments')) breadcrumbs.push({ title: '部署管理', path: pathname });
       }
     }
-
     return breadcrumbs;
   };
 
@@ -104,26 +93,10 @@ const MainLayout = () => {
           label: 'Nginx',
           type: 'group',
           children: [
-            {
-              key: '/middleware/nginx/packages',
-              icon: <InboxOutlined />,
-              label: '离线包管理',
-            },
-            {
-              key: '/middleware/nginx/certificates',
-              icon: <SafetyCertificateOutlined />,
-              label: 'SSL证书',
-            },
-            {
-              key: '/middleware/nginx/configs',
-              icon: <FileTextOutlined />,
-              label: '配置管理',
-            },
-            {
-              key: '/middleware/nginx/deployments',
-              icon: <RocketOutlined />,
-              label: '部署管理',
-            },
+            { key: '/middleware/nginx/packages', icon: <InboxOutlined />, label: '离线包' },
+            { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL证书' },
+            { key: '/middleware/nginx/configs', icon: <FileTextOutlined />, label: '配置管理' },
+            { key: '/middleware/nginx/deployments', icon: <RocketOutlined />, label: '部署管理' },
           ],
         },
         {
@@ -131,16 +104,8 @@ const MainLayout = () => {
           label: 'Redis',
           type: 'group',
           children: [
-            {
-              key: '/middleware/redis/packages',
-              icon: <InboxOutlined />,
-              label: '离线包管理',
-            },
-            {
-              key: '/middleware/redis/deployments',
-              icon: <RocketOutlined />,
-              label: '部署管理',
-            },
+            { key: '/middleware/redis/packages', icon: <InboxOutlined />, label: '离线包' },
+            { key: '/middleware/redis/deployments', icon: <RocketOutlined />, label: '部署管理' },
           ],
         },
         {
@@ -148,16 +113,8 @@ const MainLayout = () => {
           label: 'OpenSSH',
           type: 'group',
           children: [
-            {
-              key: '/middleware/openssh/packages',
-              icon: <InboxOutlined />,
-              label: '离线包管理',
-            },
-            {
-              key: '/middleware/openssh/deployments',
-              icon: <RocketOutlined />,
-              label: '部署管理',
-            },
+            { key: '/middleware/openssh/packages', icon: <InboxOutlined />, label: '离线包' },
+            { key: '/middleware/openssh/deployments', icon: <RocketOutlined />, label: '部署管理' },
           ],
         },
       ],
@@ -166,25 +123,10 @@ const MainLayout = () => {
 
   const userMenu = {
     items: [
-      {
-        key: 'profile',
-        icon: <UserOutlined />,
-        label: '个人信息',
-      },
-      {
-        key: 'settings',
-        icon: <SettingOutlined />,
-        label: '设置',
-      },
-      {
-        type: 'divider' as const,
-      },
-      {
-        key: 'logout',
-        icon: <LogoutOutlined />,
-        label: '退出登录',
-        onClick: handleLogout,
-      },
+      { key: 'profile', icon: <UserOutlined />, label: '个人信息' },
+      { key: 'settings', icon: <SettingOutlined />, label: '设置' },
+      { type: 'divider' as const },
+      { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout },
     ],
   };
 
@@ -194,75 +136,188 @@ const MainLayout = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        theme="dark"
+        trigger={null}
+        width={240}
+        collapsedWidth={64}
+        style={{
+          background: 'var(--sidebar-bg)',
+          borderRight: '1px solid var(--border-color)',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 100,
+          overflow: 'auto',
+        }}
       >
+        {/* Logo */}
         <div
           style={{
-            height: 32,
-            margin: 16,
-            background: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: 6,
+            height: 56,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontWeight: 'bold',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            padding: collapsed ? '0' : '0 20px',
+            borderBottom: '1px solid var(--border-color)',
+            gap: 10,
           }}
         >
-          {collapsed ? 'MDK' : '中间件部署平台'}
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 700,
+              fontSize: 14,
+              flexShrink: 0,
+            }}
+          >
+            M
+          </div>
+          {!collapsed && (
+            <span
+              style={{
+                color: 'var(--text-primary)',
+                fontWeight: 600,
+                fontSize: 15,
+                whiteSpace: 'nowrap',
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              MDK Deploy
+            </span>
+          )}
         </div>
+
         <Menu
           theme="dark"
           selectedKeys={[location.pathname]}
-          openKeys={openKeys}
+          openKeys={collapsed ? [] : openKeys}
           onOpenChange={setOpenKeys}
           mode="inline"
           items={menuItems}
+          style={{
+            background: 'transparent',
+            borderRight: 'none',
+            padding: '8px 0',
+          }}
           onClick={({ key }) => {
-            // 只有点击具体路径才跳转（不是分组标题）
-            if (key.startsWith('/')) {
-              navigate(key);
-            }
+            if (key.startsWith('/')) navigate(key);
           }}
         />
+
+        {/* Collapse trigger at bottom */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: '12px 16px',
+            borderTop: '1px solid var(--border-color)',
+            display: 'flex',
+            justifyContent: collapsed ? 'center' : 'flex-end',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+          }}
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+        </div>
       </Sider>
-      <AntLayout>
+
+      <AntLayout
+        style={{
+          marginLeft: collapsed ? 64 : 240,
+          transition: 'margin-left 0.2s ease',
+        }}
+      >
+        {/* Header */}
         <Header
           style={{
             padding: '0 24px',
-            background: '#fff',
+            background: 'var(--header-bg)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+            height: 56,
+            lineHeight: '56px',
+            borderBottom: '1px solid var(--border-color)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 99,
           }}
         >
-          <div style={{ fontSize: 20, fontWeight: 500 }}>
-            中间件离线部署管理平台
-          </div>
-          <Dropdown menu={userMenu} placement="bottomRight">
-            <div
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
+                fontSize: 16,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-sans)',
               }}
             >
-              <Avatar icon={<UserOutlined />} style={{ marginRight: 8 }} />
-              <span>{user?.username || '用户'}</span>
-            </div>
-          </Dropdown>
+              中间件离线部署管理平台
+            </span>
+            <Input
+              prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              placeholder="搜索..."
+              style={{
+                width: 240,
+                background: 'var(--bg-tertiary)',
+                borderColor: 'var(--border-color)',
+              }}
+              size="small"
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ThemeToggle />
+            <Dropdown menu={userMenu} placement="bottomRight">
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  transition: 'background 0.2s',
+                  gap: 8,
+                }}
+              >
+                <Avatar
+                  size={28}
+                  style={{
+                    background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+                    fontSize: 12,
+                  }}
+                >
+                  {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+                </Avatar>
+                <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>
+                  {user?.username || '用户'}
+                </span>
+              </div>
+            </Dropdown>
+          </div>
         </Header>
+
         <Content
           style={{
-            margin: '24px 16px',
+            margin: 0,
+            padding: 24,
+            minHeight: 'calc(100vh - 56px)',
           }}
         >
           {location.pathname !== '/' && (
             <Breadcrumb
-              style={{
-                marginBottom: 16,
-              }}
+              style={{ marginBottom: 16 }}
               items={getBreadcrumbs(location.pathname).map((item) => ({
                 title: item.title,
                 onClick: item.path ? () => navigate(item.path) : undefined,
@@ -270,16 +325,7 @@ const MainLayout = () => {
               }))}
             />
           )}
-          <div
-            style={{
-              padding: 24,
-              background: '#fff',
-              borderRadius: 8,
-              minHeight: 'calc(100vh - 160px)',
-            }}
-          >
-            <Outlet />
-          </div>
+          <Outlet />
         </Content>
       </AntLayout>
     </AntLayout>

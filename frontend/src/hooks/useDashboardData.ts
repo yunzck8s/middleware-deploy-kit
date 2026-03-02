@@ -3,11 +3,11 @@ import { message } from 'antd';
 import { getPackageList } from '../api/package';
 import { getServerList } from '../api/server';
 import { getDeploymentList } from '../api/deployment';
+import { getCertificateList } from '../api/certificate';
 import type { Deployment, DeploymentStatus } from '../types';
 import { formatDate, getRecentDays } from '../utils/chartUtils';
 
 export interface DashboardStats {
-  // 统计数据
   packagesCount: number;
   serversTotal: number;
   serversOnline: number;
@@ -15,7 +15,10 @@ export interface DashboardStats {
   deploymentsRunning: number;
   successRate: number;
 
-  // 图表数据
+  // Certificate stats
+  certificatesTotal: number;
+  certificatesExpiringSoon: number; // within 30 days
+
   trendData: {
     dates: string[];
     success: number[];
@@ -27,7 +30,6 @@ export interface DashboardStats {
     status: DeploymentStatus;
   }[];
 
-  // 最近活动
   recentDeployments: Deployment[];
 }
 
@@ -39,50 +41,45 @@ export const useDashboardData = () => {
     try {
       setLoading(true);
 
-      // 并行获取所有数据
-      const [packagesRes, serversRes, deploymentsRes] = await Promise.all([
+      const [packagesRes, serversRes, deploymentsRes, certsRes] = await Promise.all([
         getPackageList({ page: 1, page_size: 1000 }),
         getServerList({ page: 1, page_size: 1000 }),
         getDeploymentList({ page: 1, page_size: 1000 }),
+        getCertificateList({ page: 1, page_size: 1000 }),
       ]);
 
-      // 计算统计数据
-      const packagesCount =
-        packagesRes.packages?.filter((p) => p.status === 'active').length || 0;
-      const serversOnline =
-        serversRes.servers?.filter((s) => s.status === 'online').length || 0;
+      const packagesCount = packagesRes.packages?.filter((p) => p.status === 'active').length || 0;
+      const serversOnline = serversRes.servers?.filter((s) => s.status === 'online').length || 0;
       const serversTotal = serversRes.total || 0;
 
       const deployments = deploymentsRes.deployments || [];
       const deploymentsTotal = deployments.length;
-      const deploymentsRunning = deployments.filter(
-        (d) => d.status === 'running'
-      ).length;
+      const deploymentsRunning = deployments.filter((d) => d.status === 'running').length;
       const successCount = deployments.filter((d) => d.status === 'success').length;
-      const successRate =
-        deploymentsTotal > 0
-          ? Math.round((successCount / deploymentsTotal) * 100)
-          : 0;
+      const successRate = deploymentsTotal > 0 ? Math.round((successCount / deploymentsTotal) * 1000) / 10 : 0;
 
-      // 计算最近7天的趋势数据
+      // Certificate stats
+      const certs = certsRes.certificates || [];
+      const certificatesTotal = certs.length;
+      const now = new Date();
+      const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const certificatesExpiringSoon = certs.filter((c) => {
+        if (c.status === 'expired') return false;
+        const expiry = new Date(c.valid_until);
+        return expiry <= thirtyDaysLater && expiry > now;
+      }).length;
+
       const recentDays = getRecentDays(7);
       const trendData = {
         dates: recentDays,
-        success: recentDays.map((date) => {
-          return deployments.filter((d) => {
-            const deployDate = formatDate(d.created_at);
-            return deployDate === date && d.status === 'success';
-          }).length;
-        }),
-        failed: recentDays.map((date) => {
-          return deployments.filter((d) => {
-            const deployDate = formatDate(d.created_at);
-            return deployDate === date && d.status === 'failed';
-          }).length;
-        }),
+        success: recentDays.map((date) =>
+          deployments.filter((d) => formatDate(d.created_at) === date && d.status === 'success').length
+        ),
+        failed: recentDays.map((date) =>
+          deployments.filter((d) => formatDate(d.created_at) === date && d.status === 'failed').length
+        ),
       };
 
-      // 计算状态分布数据
       const statusCounts: Record<DeploymentStatus, number> = {
         pending: 0,
         running: 0,
@@ -90,25 +87,18 @@ export const useDashboardData = () => {
         failed: 0,
         cancelled: 0,
       };
-
       deployments.forEach((d) => {
         statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
       });
 
-      const statusData = (Object.keys(statusCounts) as DeploymentStatus[]).map(
-        (status) => ({
-          name: getStatusLabel(status),
-          value: statusCounts[status],
-          status,
-        })
-      );
+      const statusData = (Object.keys(statusCounts) as DeploymentStatus[]).map((status) => ({
+        name: getStatusLabel(status),
+        value: statusCounts[status],
+        status,
+      }));
 
-      // 最近10条部署记录
       const recentDeployments = deployments
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 10);
 
       setStats({
@@ -118,6 +108,8 @@ export const useDashboardData = () => {
         deploymentsTotal,
         deploymentsRunning,
         successRate,
+        certificatesTotal,
+        certificatesExpiringSoon,
         trendData,
         statusData,
         recentDeployments,
@@ -133,7 +125,6 @@ export const useDashboardData = () => {
   return { stats, loading, fetchData };
 };
 
-// 辅助函数：获取状态标签
 function getStatusLabel(status: DeploymentStatus): string {
   const labelMap: Record<DeploymentStatus, string> = {
     pending: '待执行',

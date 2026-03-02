@@ -1,5 +1,5 @@
 import client from './client';
-import type { NginxConfig, ApiResponse } from '../types';
+import type { NginxConfig, NginxUpstream, NginxLocation, ApiResponse } from '../types';
 
 export interface NginxConfigListParams {
   status?: string;
@@ -32,11 +32,40 @@ export interface CreateNginxConfigData {
   access_log_path?: string;
   error_log_path?: string;
   log_format?: string;
+  // 日志轮转
+  rotate_enabled?: boolean;
+  rotate_frequency?: 'daily' | 'weekly' | 'monthly';
+  rotate_count?: number;
+  rotate_max_size?: string;
+  rotate_compress?: boolean;
+  rotate_date_ext?: boolean;
   enable_proxy?: boolean;
   proxy_pass?: string;
   client_max_body_size?: string;
   gzip?: boolean;
   custom_config?: string;
+  locations?: NginxLocation[];
+  // Advanced SSL
+  ssl_protocols?: string;
+  ssl_ciphers?: string;
+  enable_hsts?: boolean;
+  hsts_max_age?: number;
+  enable_ocsp?: boolean;
+  // Cache
+  cache_enabled?: boolean;
+  cache_path?: string;
+  cache_size?: string;
+  cache_valid_time?: string;
+  // Security
+  rate_limit_enabled?: boolean;
+  rate_limit_zone?: string;
+  rate_limit_burst?: number;
+  conn_limit_enabled?: boolean;
+  conn_limit_zone?: string;
+  conn_limit_num?: number;
+  allow_ips?: string;
+  deny_ips?: string;
+  security_headers?: string;
 }
 
 export interface GenerateResponse {
@@ -46,50 +75,46 @@ export interface GenerateResponse {
 
 export interface PreviewResponse {
   content: string;
+  logrotate_content?: string;
 }
 
-// 获取 Nginx 配置列表
+// ==================== Config CRUD ====================
+
 export const getNginxConfigList = async (params: NginxConfigListParams = {}): Promise<NginxConfigListResponse> => {
   const response = await client.get<ApiResponse<NginxConfigListResponse>>('/nginx', { params });
   return (response as unknown as ApiResponse<NginxConfigListResponse>).data!;
 };
 
-// 获取 Nginx 配置详情
 export const getNginxConfigDetail = async (id: number): Promise<NginxConfig> => {
   const response = await client.get<ApiResponse<NginxConfig>>(`/nginx/${id}`);
   return (response as unknown as ApiResponse<NginxConfig>).data!;
 };
 
-// 创建 Nginx 配置
 export const createNginxConfig = async (data: CreateNginxConfigData): Promise<NginxConfig> => {
   const response = await client.post<ApiResponse<NginxConfig>>('/nginx', data);
   return (response as unknown as ApiResponse<NginxConfig>).data!;
 };
 
-// 更新 Nginx 配置
 export const updateNginxConfig = async (id: number, data: CreateNginxConfigData): Promise<NginxConfig> => {
   const response = await client.put<ApiResponse<NginxConfig>>(`/nginx/${id}`, data);
   return (response as unknown as ApiResponse<NginxConfig>).data!;
 };
 
-// 删除 Nginx 配置
 export const deleteNginxConfig = async (id: number): Promise<void> => {
   await client.delete<ApiResponse<void>>(`/nginx/${id}`);
 };
 
-// 生成 Nginx 配置文件
 export const generateNginxConfig = async (id: number): Promise<GenerateResponse> => {
   const response = await client.get<ApiResponse<GenerateResponse>>(`/nginx/${id}/generate`);
   return (response as unknown as ApiResponse<GenerateResponse>).data!;
 };
 
-// 预览 Nginx 配置（不保存）
 export const previewNginxConfig = async (data: CreateNginxConfigData): Promise<PreviewResponse> => {
   const response = await client.post<ApiResponse<PreviewResponse>>('/nginx/preview', data);
   return (response as unknown as ApiResponse<PreviewResponse>).data!;
 };
 
-// ==================== Nginx 配置应用相关 API ====================
+// ==================== Apply ====================
 
 export interface ApplyConfigData {
   server_id: number;
@@ -104,7 +129,6 @@ export interface ApplyHistoryParams {
   page_size?: number;
 }
 
-// 获取服务器上的 Nginx 部署信息
 export interface NginxDeployInfo {
   found: boolean;
   target_path?: string;
@@ -117,20 +141,63 @@ export const getNginxDeployInfo = async (serverId: number): Promise<NginxDeployI
   return (response as unknown as ApiResponse<NginxDeployInfo>).data!;
 };
 
-// 应用 Nginx 配置到服务器
 export const applyNginxConfig = async (id: number, data: ApplyConfigData): Promise<any> => {
   const response = await client.post<ApiResponse<any>>(`/nginx/${id}/apply`, data);
   return (response as unknown as ApiResponse<any>).data!;
 };
 
-// 获取配置应用历史
 export const getApplyHistory = async (id: number, params?: ApplyHistoryParams): Promise<any> => {
   const response = await client.get<ApiResponse<any>>(`/nginx/${id}/apply-history`, { params });
   return (response as unknown as ApiResponse<any>).data!;
 };
 
-// 获取应用详情（包含日志）
 export const getApplyDetail = async (applyId: number): Promise<any> => {
   const response = await client.get<ApiResponse<any>>(`/nginx/applies/${applyId}`);
   return (response as unknown as ApiResponse<any>).data!;
+};
+
+// ==================== Upstream CRUD ====================
+
+export const getUpstreams = async (configId: number): Promise<NginxUpstream[]> => {
+  const response = await client.get<ApiResponse<NginxUpstream[]>>(`/nginx/${configId}/upstreams`);
+  return (response as unknown as ApiResponse<NginxUpstream[]>).data!;
+};
+
+export const createUpstream = async (configId: number, data: Partial<NginxUpstream>): Promise<NginxUpstream> => {
+  const response = await client.post<ApiResponse<NginxUpstream>>(`/nginx/${configId}/upstreams`, data);
+  return (response as unknown as ApiResponse<NginxUpstream>).data!;
+};
+
+export const updateUpstream = async (uid: number, data: Partial<NginxUpstream>): Promise<NginxUpstream> => {
+  const response = await client.put<ApiResponse<NginxUpstream>>(`/nginx/upstreams/${uid}`, data);
+  return (response as unknown as ApiResponse<NginxUpstream>).data!;
+};
+
+export const deleteUpstream = async (uid: number): Promise<void> => {
+  await client.delete<ApiResponse<void>>(`/nginx/upstreams/${uid}`);
+};
+
+// ==================== Location CRUD ====================
+
+export const getLocations = async (configId: number): Promise<NginxLocation[]> => {
+  const response = await client.get<ApiResponse<NginxLocation[]>>(`/nginx/${configId}/locations`);
+  return (response as unknown as ApiResponse<NginxLocation[]>).data!;
+};
+
+export const createLocation = async (configId: number, data: Partial<NginxLocation>): Promise<NginxLocation> => {
+  const response = await client.post<ApiResponse<NginxLocation>>(`/nginx/${configId}/locations`, data);
+  return (response as unknown as ApiResponse<NginxLocation>).data!;
+};
+
+export const updateLocation = async (lid: number, data: Partial<NginxLocation>): Promise<NginxLocation> => {
+  const response = await client.put<ApiResponse<NginxLocation>>(`/nginx/locations/${lid}`, data);
+  return (response as unknown as ApiResponse<NginxLocation>).data!;
+};
+
+export const deleteLocation = async (lid: number): Promise<void> => {
+  await client.delete<ApiResponse<void>>(`/nginx/locations/${lid}`);
+};
+
+export const updateLocationOrder = async (configId: number, orders: { id: number; sort_order: number }[]): Promise<void> => {
+  await client.put<ApiResponse<void>>(`/nginx/${configId}/locations/order`, { orders });
 };

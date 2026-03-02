@@ -97,11 +97,38 @@ export interface SSHTestResult {
 // Nginx Location 配置
 export interface NginxLocation {
   id?: number;
-  path: string;                    // 路径，如 /、/api、/static
-  match_type?: string;             // 匹配类型：exact(=), prefix(无), regex(~)
-  proxy_pass?: string;             // 代理地址
-  root?: string;                   // 静态文件根目录
-  try_files?: string;              // try_files 配置
+  nginx_config_id?: number;
+  path: string;
+  match_type?: string;             // exact, prefix, regex, regex_case_insensitive
+  handler_type?: string;           // static, proxy, redirect, return
+  proxy_pass?: string;
+  proxy_set_headers?: string;      // JSON
+  root?: string;
+  try_files?: string;
+  redirect_url?: string;
+  redirect_code?: number;
+  return_code?: number;
+  return_body?: string;
+  sort_order?: number;
+}
+
+// Nginx Upstream 配置
+export interface NginxUpstream {
+  id?: number;
+  nginx_config_id?: number;
+  name: string;
+  load_balance: string;            // round_robin, least_conn, ip_hash, hash
+  servers: string;                 // JSON: [{address, port, weight, max_fails, fail_timeout, backup, down}]
+}
+
+export interface UpstreamServer {
+  address: string;
+  port: number;
+  weight?: number;
+  max_fails?: number;
+  fail_timeout?: string;
+  backup?: boolean;
+  down?: boolean;
 }
 
 // Nginx 配置
@@ -124,13 +151,42 @@ export interface NginxConfig {
   access_log_path: string;
   error_log_path: string;
   log_format: 'main' | 'json';
+  // 日志轮转
+  rotate_enabled?: boolean;
+  rotate_frequency?: 'daily' | 'weekly' | 'monthly';
+  rotate_count?: number;
+  rotate_max_size?: string;
+  rotate_compress?: boolean;
+  rotate_date_ext?: boolean;
   enable_proxy: boolean;
   proxy_pass: string;
-  locations?: NginxLocation[];     // 多个 location 配置
+  locations?: NginxLocation[];
+  upstreams?: NginxUpstream[];
   client_max_body_size: string;
   gzip: boolean;
   custom_config: string;
   status: 'draft' | 'active' | 'disabled';
+  // SSL/TLS advanced
+  ssl_protocols?: string;
+  ssl_ciphers?: string;
+  enable_hsts?: boolean;
+  hsts_max_age?: number;
+  enable_ocsp?: boolean;
+  // Cache
+  cache_enabled?: boolean;
+  cache_path?: string;
+  cache_size?: string;
+  cache_valid_time?: string;
+  // Security
+  rate_limit_enabled?: boolean;
+  rate_limit_zone?: string;
+  rate_limit_burst?: number;
+  conn_limit_enabled?: boolean;
+  conn_limit_zone?: string;
+  conn_limit_num?: number;
+  allow_ips?: string;
+  deny_ips?: string;
+  security_headers?: string;
   created_at: string;
   updated_at: string;
   server?: Server;

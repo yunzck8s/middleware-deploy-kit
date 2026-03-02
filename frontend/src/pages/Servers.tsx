@@ -23,9 +23,7 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   ApiOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  QuestionCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -53,9 +51,10 @@ const Servers: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [testingId, setTestingId] = useState<number | null>(null);
   const [testingDirect, setTestingDirect] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
 
-  // 加载服务器列表
   const loadServers = async () => {
     try {
       setLoading(true);
@@ -73,19 +72,14 @@ const Servers: React.FC = () => {
     loadServers();
   }, [page, pageSize]);
 
-  // 打开添加对话框
   const handleAdd = () => {
     setModalTitle('添加服务器');
     setEditingServer(null);
     form.resetFields();
-    form.setFieldsValue({
-      port: 22,
-      auth_type: 'password',
-    });
+    form.setFieldsValue({ port: 22, auth_type: 'password' });
     setModalVisible(true);
   };
 
-  // 打开编辑对话框
   const handleEdit = (server: Server) => {
     setModalTitle('编辑服务器');
     setEditingServer(server);
@@ -102,7 +96,6 @@ const Servers: React.FC = () => {
     setModalVisible(true);
   };
 
-  // 提交表单
   const handleSubmit = async (values: any) => {
     try {
       setSubmitting(true);
@@ -123,7 +116,6 @@ const Servers: React.FC = () => {
     }
   };
 
-  // 删除服务器
   const handleDelete = async (id: number) => {
     try {
       await deleteServer(id);
@@ -134,7 +126,6 @@ const Servers: React.FC = () => {
     }
   };
 
-  // 测试连接
   const handleTestConnection = async (id: number) => {
     try {
       setTestingId(id);
@@ -152,19 +143,17 @@ const Servers: React.FC = () => {
     }
   };
 
-  // 直接测试连接（表单中）
   const handleTestDirect = async () => {
     try {
-      const values = await form.validateFields(['host', 'port', 'username', 'auth_type', 'password', 'private_key', 'passphrase']);
+      const values = await form.validateFields([
+        'host', 'port', 'username', 'auth_type', 'password', 'private_key', 'passphrase',
+      ]);
       setTestingDirect(true);
       const result = await testConnectionDirect(values);
       if (result.success) {
         message.success(`连接成功！延迟: ${result.latency_ms}ms`);
         if (result.os_type) {
-          form.setFieldsValue({
-            os_type: result.os_type,
-            os_version: result.os_version,
-          });
+          form.setFieldsValue({ os_type: result.os_type, os_version: result.os_version });
         }
       } else {
         message.error(`连接失败: ${result.message}`);
@@ -180,34 +169,30 @@ const Servers: React.FC = () => {
     }
   };
 
-  // 获取状态标签
-  const getStatusTag = (status: string) => {
-    switch (status) {
-      case 'online':
-        return <Tag icon={<CheckCircleOutlined />} color="success">在线</Tag>;
-      case 'offline':
-        return <Tag icon={<CloseCircleOutlined />} color="error">离线</Tag>;
-      default:
-        return <Tag icon={<QuestionCircleOutlined />} color="default">未知</Tag>;
-    }
-  };
+  // Filter servers
+  const filteredServers = servers.filter((s) => {
+    const matchSearch = !searchText ||
+      s.name.toLowerCase().includes(searchText.toLowerCase()) ||
+      s.host.toLowerCase().includes(searchText.toLowerCase());
+    const matchStatus = !statusFilter || s.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
 
   const columns: ColumnsType<Server> = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 60,
-    },
-    {
-      title: '服务器名称',
+      title: '服务器',
       dataIndex: 'name',
       key: 'name',
       render: (text, record) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{text}</div>
-          <div style={{ fontSize: '12px', color: '#999' }}>
-            {record.host}:{record.port}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span
+            className={`status-dot status-dot--${record.status === 'online' ? 'online' : record.status === 'offline' ? 'offline' : 'unknown'}`}
+          />
+          <div>
+            <div style={{ fontWeight: 500 }}>{text}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+              {record.host}:{record.port}
+            </div>
           </div>
         </div>
       ),
@@ -216,11 +201,15 @@ const Servers: React.FC = () => {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
+      render: (text) => (
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{text}</span>
+      ),
     },
     {
-      title: '认证方式',
+      title: '认证',
       dataIndex: 'auth_type',
       key: 'auth_type',
+      width: 80,
       render: (type: string) => (
         <Tag color={type === 'password' ? 'blue' : 'purple'}>
           {type === 'password' ? '密码' : '密钥'}
@@ -230,68 +219,82 @@ const Servers: React.FC = () => {
     {
       title: '操作系统',
       key: 'os',
-      render: (_, record) => (
+      render: (_, record) =>
         record.os_type ? (
           <Tag color="cyan">
             {record.os_type} {record.os_version}
           </Tag>
         ) : (
-          <span style={{ color: '#999' }}>未知</span>
-        )
-      ),
+          <span style={{ color: 'var(--text-tertiary)' }}>未知</span>
+        ),
     },
     {
       title: '状态',
       key: 'status',
-      render: (_, record) => getStatusTag(record.status),
+      width: 80,
+      render: (_, record) => {
+        const map: Record<string, { color: string; text: string }> = {
+          online: { color: 'success', text: '在线' },
+          offline: { color: 'error', text: '离线' },
+          unknown: { color: 'default', text: '未知' },
+        };
+        const item = map[record.status] || map.unknown;
+        return <Tag color={item.color}>{item.text}</Tag>;
+      },
     },
     {
       title: '最后检查',
       key: 'last_check',
-      render: (_, record) => (
+      render: (_, record) =>
         record.last_check_at ? (
           <Tooltip title={record.last_check_msg}>
-            <span>{new Date(record.last_check_at).toLocaleString('zh-CN')}</span>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+              {new Date(record.last_check_at).toLocaleString('zh-CN')}
+            </span>
           </Tooltip>
         ) : (
-          <span style={{ color: '#999' }}>从未检查</span>
-        )
-      ),
+          <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>从未检查</span>
+        ),
     },
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 200,
       render: (_, record) => (
-        <Space>
+        <Space size="small">
           <Tooltip title="测试连接">
             <Button
-              type="link"
+              type="text"
               icon={testingId === record.id ? <Spin size="small" /> : <ApiOutlined />}
               size="small"
               onClick={() => handleTestConnection(record.id)}
               disabled={testingId !== null}
-            >
-              测试
-            </Button>
+              style={{ color: 'var(--color-primary)' }}
+            />
           </Tooltip>
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            size="small"
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
+          <Tooltip title="编辑">
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              size="small"
+              onClick={() => handleEdit(record)}
+              style={{ color: 'var(--text-secondary)' }}
+            />
+          </Tooltip>
           <Popconfirm
             title="确定要删除这个服务器吗？"
             onConfirm={() => handleDelete(record.id)}
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small">
-              删除
-            </Button>
+            <Tooltip title="删除">
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                size="small"
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -299,44 +302,67 @@ const Servers: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Card
-            title="服务器管理"
-            extra={
-              <Space>
-                <Button icon={<ReloadOutlined />} onClick={loadServers}>
-                  刷新
-                </Button>
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-                  添加服务器
-                </Button>
-              </Space>
-            }
-          >
-            <Table
-              columns={columns}
-              dataSource={servers}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                current: page,
-                pageSize: pageSize,
-                total: total,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 台服务器`,
-                onChange: (page, pageSize) => {
-                  setPage(page);
-                  setPageSize(pageSize);
-                },
-              }}
+    <div>
+      <Card
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600 }}>服务器管理</span>
+            <Input
+              prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              placeholder="搜索主机名或 IP"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 220, background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
+              size="small"
+              allowClear
             />
-          </Card>
-        </Col>
-      </Row>
+            <Select
+              placeholder="状态"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allowClear
+              style={{ width: 100 }}
+              size="small"
+            >
+              <Option value="online">在线</Option>
+              <Option value="offline">离线</Option>
+              <Option value="unknown">未知</Option>
+            </Select>
+          </div>
+        }
+        extra={
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={loadServers} size="small">
+              刷新
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} size="small">
+              添加服务器
+            </Button>
+          </Space>
+        }
+        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+      >
+        <Table
+          columns={columns}
+          dataSource={filteredServers}
+          rowKey="id"
+          loading={loading}
+          size="middle"
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 台服务器`,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+        />
+      </Card>
 
-      {/* 添加/编辑服务器对话框 */}
+      {/* Add/Edit Modal */}
       <Modal
         title={modalTitle}
         open={modalVisible}
@@ -360,25 +386,16 @@ const Servers: React.FC = () => {
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                label="服务器名称"
-                name="name"
-                rules={[{ required: true, message: '请输入服务器名称' }]}
-              >
+              <Form.Item label="服务器名称" name="name" rules={[{ required: true, message: '请输入服务器名称' }]}>
                 <Input placeholder="例如: Web Server 01" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                label="主机地址"
-                name="host"
-                rules={[{ required: true, message: '请输入主机地址' }]}
-              >
+              <Form.Item label="主机地址" name="host" rules={[{ required: true, message: '请输入主机地址' }]}>
                 <Input placeholder="IP 地址或域名" />
               </Form.Item>
             </Col>
           </Row>
-
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item label="SSH 端口" name="port">
@@ -386,11 +403,7 @@ const Servers: React.FC = () => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item
-                label="用户名"
-                name="username"
-                rules={[{ required: true, message: '请输入用户名' }]}
-              >
+              <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
                 <Input placeholder="例如: root" />
               </Form.Item>
             </Col>
@@ -403,10 +416,9 @@ const Servers: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
-
           <Form.Item
             noStyle
-            shouldUpdate={(prevValues, currentValues) => prevValues.auth_type !== currentValues.auth_type}
+            shouldUpdate={(prev, cur) => prev.auth_type !== cur.auth_type}
           >
             {({ getFieldValue }) =>
               getFieldValue('auth_type') === 'password' ? (
@@ -435,7 +447,6 @@ const Servers: React.FC = () => {
               )
             }
           </Form.Item>
-
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="操作系统类型" name="os_type">
@@ -455,7 +466,6 @@ const Servers: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
-
           <Form.Item label="描述" name="description">
             <TextArea rows={2} placeholder="服务器描述（可选）" />
           </Form.Item>

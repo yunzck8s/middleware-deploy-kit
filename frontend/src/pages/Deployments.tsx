@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
   Table,
@@ -12,14 +12,13 @@ import {
   Tag,
   message,
   Popconfirm,
-  Steps,
   Spin,
   Typography,
   Tooltip,
   Row,
   Col,
   Divider,
-  Alert,
+  Drawer,
 } from 'antd';
 import {
   PlusOutlined,
@@ -34,6 +33,7 @@ import {
   RollbackOutlined,
   StopOutlined,
   SyncOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -71,40 +71,40 @@ const DeploymentsPage: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
   const [modalVisible, setModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [deployType, setDeployType] = useState<string>('nginx_config');
-
-  // 资源列表
+  const [deployType, setDeployType] = useState<string>('package');
   const [servers, setServers] = useState<Server[]>([]);
   const [packages, setPackages] = useState<MiddlewarePackage[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
-
-  // 日志查看
-  const [logModalVisible, setLogModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentDeployment, setCurrentDeployment] = useState<Deployment | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
-
-  // 参数化部署
   const [packageMetadata, setPackageMetadata] = useState<PackageMetadata | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
-  const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
-
+  const [, setSelectedPackageId] = useState<number | null>(null);
+  const [historicalLogs, setHistoricalLogs] = useState<DeploymentLog[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const logEndRef = useRef<HTMLDivElement>(null);
   const [form] = Form.useForm();
 
-  // 使用 SSE Hook 实时获取日志
   const {
     logs: realtimeLogs,
     isConnected: sseConnected,
     disconnect: disconnectSSE,
   } = useDeploymentLogs({
     deploymentId: currentDeployment?.id || 0,
-    enabled: logModalVisible && currentDeployment?.status === 'running',
+    enabled: drawerVisible && currentDeployment?.status === 'running',
     onComplete: () => {
       message.success('部署完成');
       loadDeployments();
     },
   });
 
-  // 加载部署列表
+  // Auto-scroll log terminal
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [realtimeLogs, historicalLogs]);
+
   const loadDeployments = async () => {
     try {
       setLoading(true);
@@ -118,7 +118,6 @@ const DeploymentsPage: React.FC = () => {
     }
   };
 
-  // 加载资源列表
   const loadResources = async () => {
     try {
       const [serverRes, pkgRes, certRes] = await Promise.all([
@@ -139,91 +138,67 @@ const DeploymentsPage: React.FC = () => {
     loadResources();
   }, [page, pageSize]);
 
-  // 加载历史日志（用于非 running 状态的部署）
-  const [historicalLogs, setHistoricalLogs] = useState<DeploymentLog[]>([]);
   const loadHistoricalLogs = async (deploymentId: number) => {
     try {
       setLogsLoading(true);
       const logsData = await getDeploymentLogs(deploymentId);
       setHistoricalLogs(logsData || []);
-    } catch (error: any) {
-      console.error('加载日志失败', error);
+    } catch {
+      console.error('加载日志失败');
     } finally {
       setLogsLoading(false);
     }
   };
 
-  // 加载离线包元数据
   const loadPackageMetadata = async (packageId: number) => {
     try {
       setMetadataLoading(true);
       setPackageMetadata(null);
       const metadata = await getPackageMetadata(packageId);
       setPackageMetadata(metadata);
-    } catch (error: any) {
-      console.error('加载离线包元数据失败', error);
-      // 如果元数据不存在，不显示错误，仅记录日志
+    } catch {
       setPackageMetadata(null);
     } finally {
       setMetadataLoading(false);
     }
   };
 
-  // 处理离线包选择
   const handlePackageChange = (packageId: number) => {
     setSelectedPackageId(packageId);
     loadPackageMetadata(packageId);
   };
 
-  // 查看日志
   const handleViewLogs = async (record: Deployment) => {
     setCurrentDeployment(record);
-    setLogModalVisible(true);
-    // 如果不是 running 状态，加载历史日志
+    setDrawerVisible(true);
     if (record.status !== 'running') {
       await loadHistoricalLogs(record.id);
     }
-    // running 状态会自动使用 SSE Hook
   };
 
-  // 取消部署
   const handleCancel = async (id: number) => {
     try {
       const result = await cancelDeployment(id);
-      message.success(result.message || '正在取消部署，请等待当前步骤完成');
+      message.success(result.message || '正在取消部署');
     } catch (error: any) {
       message.error(error.message || '取消失败');
     }
   };
 
-  // 创建部署任务
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
       setSubmitting(true);
-
-      // 对于离线包部署，如果有参数配置，序列化为 JSON
       let deployParams: string | undefined;
       if (deployType === 'package' && packageMetadata?.parameters) {
         const params: Record<string, any> = {};
         packageMetadata.parameters.forEach((param) => {
           const value = values[param.name];
-          if (value !== undefined && value !== null) {
-            params[param.name] = value;
-          }
+          if (value !== undefined && value !== null) params[param.name] = value;
         });
-        if (Object.keys(params).length > 0) {
-          deployParams = JSON.stringify(params);
-        }
+        if (Object.keys(params).length > 0) deployParams = JSON.stringify(params);
       }
-
-      // 构造请求数据
-      const requestData = {
-        ...values,
-        deploy_params: deployParams,
-      };
-
-      await createDeployment(requestData);
+      await createDeployment({ ...values, deploy_params: deployParams });
       message.success('部署任务创建成功');
       setModalVisible(false);
       form.resetFields();
@@ -231,28 +206,23 @@ const DeploymentsPage: React.FC = () => {
       setSelectedPackageId(null);
       loadDeployments();
     } catch (error: any) {
-      if (error.message) {
-        message.error(error.message);
-      }
+      if (error.message) message.error(error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // 执行部署
   const handleExecute = async (record: Deployment) => {
     try {
       await executeDeployment(record.id);
       message.success('部署任务已开始执行');
       loadDeployments();
-      // 打开日志查看
       handleViewLogs(record);
     } catch (error: any) {
       message.error(error.message || '执行部署失败');
     }
   };
 
-  // 删除部署
   const handleDelete = async (id: number) => {
     try {
       await deleteDeployment(id);
@@ -263,22 +233,17 @@ const DeploymentsPage: React.FC = () => {
     }
   };
 
-  // 回滚部署
   const handleRollback = async (record: Deployment) => {
     try {
       const result = await rollbackDeployment(record.id);
-      message.success(result.message || '回滚任务已开始执行');
+      message.success(result.message || '回滚任务已开始');
       loadDeployments();
-      // 打开日志查看
-      if (result.deployment) {
-        handleViewLogs(result.deployment);
-      }
+      if (result.deployment) handleViewLogs(result.deployment);
     } catch (error: any) {
       message.error(error.message || '回滚失败');
     }
   };
 
-  // 状态标签
   const renderStatus = (status: string) => {
     const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
       pending: { color: 'default', icon: <ClockCircleOutlined />, text: '待执行' },
@@ -288,14 +253,9 @@ const DeploymentsPage: React.FC = () => {
       cancelled: { color: 'warning', icon: <CloseCircleOutlined />, text: '已取消' },
     };
     const item = statusMap[status] || { color: 'default', icon: null, text: status };
-    return (
-      <Tag color={item.color} icon={item.icon}>
-        {item.text}
-      </Tag>
-    );
+    return <Tag color={item.color} icon={item.icon}>{item.text}</Tag>;
   };
 
-  // 类型标签
   const renderType = (type: string) => {
     const typeMap: Record<string, { color: string; text: string }> = {
       nginx_config: { color: 'green', text: 'Nginx 配置' },
@@ -306,96 +266,104 @@ const DeploymentsPage: React.FC = () => {
     return <Tag color={item.color}>{item.text}</Tag>;
   };
 
+  const filteredDeployments = deployments.filter((d) => {
+    const matchSearch = !searchText || d.name.toLowerCase().includes(searchText.toLowerCase());
+    const matchStatus = !statusFilter || d.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const currentLogs = currentDeployment?.status === 'running' ? realtimeLogs : historicalLogs;
+
+  // Generate terminal log text
+  const renderTerminalContent = () => {
+    if (currentLogs.length === 0) return '等待日志...';
+    return currentLogs.map((log) => {
+      const timestamp = new Date(log.created_at).toLocaleTimeString('zh-CN');
+      const statusIcon = log.status === 'success' ? '✓' : log.status === 'failed' ? '✗' : log.status === 'running' ? '⟳' : '○';
+      const statusClass = log.status === 'success' ? 'log-success' : log.status === 'failed' ? 'log-error' : '';
+      let line = `<span class="log-timestamp">[${timestamp}]</span> <span class="${statusClass}">${statusIcon} ${log.action}</span>`;
+      if (log.output) line += `\n${log.output}`;
+      if (log.error_msg) line += `\n<span class="log-error">${log.error_msg}</span>`;
+      return line;
+    }).join('\n\n');
+  };
+
   const columns: ColumnsType<Deployment> = [
     {
-      title: '名称',
+      title: '任务',
       dataIndex: 'name',
       key: 'name',
       render: (text, record) => (
         <div>
-          <div>{text}</div>
+          <div style={{ fontWeight: 500 }}>{text}</div>
           {record.description && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.description}
-            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{record.description}</Text>
           )}
         </div>
       ),
     },
+    { title: '类型', dataIndex: 'type', key: 'type', width: 110, render: renderType },
     {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-      render: renderType,
-    },
-    {
-      title: '目标服务器',
+      title: '服务器',
       key: 'server',
-      width: 150,
-      render: (_, record) => record.server?.name || '-',
+      width: 140,
+      render: (_, record) => (
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+          {record.server?.name || '-'}
+        </span>
+      ),
     },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: renderStatus,
-    },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: renderStatus },
     {
       title: '耗时',
       dataIndex: 'duration',
       key: 'duration',
       width: 80,
-      render: (val) => (val ? `${val}s` : '-'),
+      render: (val) => (
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+          {val ? `${val}s` : '-'}
+        </span>
+      ),
     },
     {
-      title: '创建时间',
+      title: '时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 170,
-      render: (val) => new Date(val).toLocaleString(),
+      width: 150,
+      render: (val) => (
+        <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+          {new Date(val).toLocaleString('zh-CN')}
+        </span>
+      ),
     },
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 180,
       render: (_, record) => (
         <Space size="small">
           {(record.status === 'pending' || record.status === 'failed') && (
-            <Tooltip title="执行部署">
+            <Tooltip title="执行">
               <Button
                 type="primary"
                 size="small"
                 icon={<PlayCircleOutlined />}
                 onClick={() => handleExecute(record)}
-              >
-                执行
-              </Button>
+              />
             </Tooltip>
           )}
           <Tooltip title="查看日志">
-            <Button
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => handleViewLogs(record)}
-            />
+            <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewLogs(record)} />
           </Tooltip>
           {record.can_rollback && record.status === 'success' && (
-            <Popconfirm
-              title="确定要回滚到之前的版本吗？"
-              onConfirm={() => handleRollback(record)}
-            >
-              <Tooltip title="回滚部署">
+            <Popconfirm title="确定要回滚吗？" onConfirm={() => handleRollback(record)}>
+              <Tooltip title="回滚">
                 <Button size="small" icon={<RollbackOutlined />} />
               </Tooltip>
             </Popconfirm>
           )}
           {record.status !== 'running' && (
-            <Popconfirm
-              title="确定要删除这个部署任务吗？"
-              onConfirm={() => handleDelete(record.id)}
-            >
+            <Popconfirm title="确定要删除吗？" onConfirm={() => handleDelete(record.id)}>
               <Button size="small" danger icon={<DeleteOutlined />} />
             </Popconfirm>
           )}
@@ -404,65 +372,78 @@ const DeploymentsPage: React.FC = () => {
     },
   ];
 
-  // 日志步骤状态
-  const getStepStatus = (log: DeploymentLog) => {
-    switch (log.status) {
-      case 'success':
-        return 'finish';
-      case 'failed':
-        return 'error';
-      case 'running':
-        return 'process';
-      default:
-        return 'wait';
-    }
-  };
-
   return (
     <div>
       <Card
-        title="部署管理"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600 }}>部署管理</span>
+            <Input
+              prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
+              placeholder="搜索任务名"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 180, background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
+              size="small"
+              allowClear
+            />
+            <Select
+              placeholder="状态"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allowClear
+              style={{ width: 100 }}
+              size="small"
+            >
+              <Option value="pending">待执行</Option>
+              <Option value="running">执行中</Option>
+              <Option value="success">成功</Option>
+              <Option value="failed">失败</Option>
+              <Option value="cancelled">已取消</Option>
+            </Select>
+          </div>
+        }
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={loadDeployments}>
+            <Button icon={<ReloadOutlined />} onClick={loadDeployments} size="small">
               刷新
             </Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
+              size="small"
               onClick={() => {
                 form.resetFields();
-                setDeployType('nginx_config');
+                setDeployType('package');
                 setPackageMetadata(null);
                 setSelectedPackageId(null);
                 setModalVisible(true);
               }}
             >
-              创建部署任务
+              创建部署
             </Button>
           </Space>
         }
+        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
       >
         <Table
           columns={columns}
-          dataSource={deployments}
+          dataSource={filteredDeployments}
           rowKey="id"
           loading={loading}
+          size="middle"
           pagination={{
             current: page,
-            pageSize: pageSize,
-            total: total,
+            pageSize,
+            total,
             showSizeChanger: true,
             showTotal: (t) => `共 ${t} 条`,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
+            onChange: (p, ps) => { setPage(p); setPageSize(ps); },
           }}
         />
       </Card>
 
-      {/* 创建部署任务对话框 */}
+      {/* Create deployment modal */}
       <Modal
         title="创建部署任务"
         open={modalVisible}
@@ -474,150 +455,64 @@ const DeploymentsPage: React.FC = () => {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{
-            type: 'nginx_config',
-            backup_enabled: true,
-            restart_service: false,
-          }}
+          initialValues={{ type: 'package', backup_enabled: true, restart_service: false }}
         >
-          <Form.Item
-            name="name"
-            label="任务名称"
-            rules={[{ required: true, message: '请输入任务名称' }]}
-          >
-            <Input placeholder="例如：生产环境 Nginx 配置部署" />
+          <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+            <Input placeholder="例如：生产环境 Nginx 部署" />
           </Form.Item>
-
           <Form.Item name="description" label="描述">
             <TextArea rows={2} placeholder="任务描述（可选）" />
           </Form.Item>
-
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item
-                name="type"
-                label="部署类型"
-                rules={[{ required: true }]}
-              >
-                <Select
-                  onChange={(val) => {
-                    setDeployType(val);
-                    // 切换类型时重置元数据
-                    setPackageMetadata(null);
-                    setSelectedPackageId(null);
-                  }}
-                >
+              <Form.Item name="type" label="部署类型" rules={[{ required: true }]}>
+                <Select onChange={(val) => { setDeployType(val); setPackageMetadata(null); setSelectedPackageId(null); }}>
                   <Option value="package">离线包</Option>
                   <Option value="certificate">证书</Option>
                 </Select>
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="server_id"
-                label="目标服务器"
-                rules={[{ required: true, message: '请选择目标服务器' }]}
-              >
+              <Form.Item name="server_id" label="目标服务器" rules={[{ required: true, message: '请选择服务器' }]}>
                 <Select placeholder="选择服务器">
-                  {servers.map((s) => (
-                    <Option key={s.id} value={s.id}>
-                      {s.name} ({s.host})
-                    </Option>
-                  ))}
+                  {servers.map((s) => <Option key={s.id} value={s.id}>{s.name} ({s.host})</Option>)}
                 </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          {/* 根据类型显示不同的资源选择 */}
           {deployType === 'package' && (
             <>
-              <Form.Item
-                name="package_id"
-                label="离线包"
-                rules={[{ required: true, message: '请选择离线包' }]}
-              >
-                <Select
-                  placeholder="选择离线包"
-                  onChange={handlePackageChange}
-                  loading={metadataLoading}
-                >
-                  {packages.map((p) => (
-                    <Option key={p.id} value={p.id}>
-                      {p.display_name} v{p.version}
-                    </Option>
-                  ))}
+              <Form.Item name="package_id" label="离线包" rules={[{ required: true, message: '请选择离线包' }]}>
+                <Select placeholder="选择离线包" onChange={handlePackageChange} loading={metadataLoading}>
+                  {packages.map((p) => <Option key={p.id} value={p.id}>{p.display_name} v{p.version}</Option>)}
                 </Select>
               </Form.Item>
-
-              {/* 参数化配置 */}
-              {metadataLoading && (
-                <div style={{ textAlign: 'center', padding: 20 }}>
-                  <Spin tip="加载配置参数..." />
-                </div>
-              )}
-
+              {metadataLoading && <div style={{ textAlign: 'center', padding: 20 }}><Spin tip="加载配置参数..." /></div>}
               {!metadataLoading && packageMetadata && packageMetadata.parameters.length > 0 && (
                 <>
                   <Divider>部署参数配置</Divider>
-                  <Alert
-                    message="参数化部署"
-                    description={`${packageMetadata.name} v${packageMetadata.version} 支持参数化配置，您可以自定义以下部署参数。如不填写将使用默认值。`}
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                  />
-                  <ParameterForm
-                    parameters={packageMetadata.parameters}
-                    form={form}
-                  />
+                  <ParameterForm parameters={packageMetadata.parameters} form={form} />
                 </>
-              )}
-
-              {!metadataLoading && selectedPackageId && (!packageMetadata || packageMetadata.parameters.length === 0) && (
-                <Alert
-                  message="该离线包不支持参数化配置"
-                  description="此离线包将使用脚本内置的默认配置进行部署"
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
               )}
             </>
           )}
 
           {deployType === 'certificate' && (
-            <Form.Item
-              name="certificate_id"
-              label="证书"
-              rules={[{ required: true, message: '请选择证书' }]}
-            >
+            <Form.Item name="certificate_id" label="证书" rules={[{ required: true, message: '请选择证书' }]}>
               <Select placeholder="选择证书">
-                {certificates.map((c) => (
-                  <Option key={c.id} value={c.id}>
-                    {c.name} ({c.domain})
-                  </Option>
-                ))}
+                {certificates.map((c) => <Option key={c.id} value={c.id}>{c.name} ({c.domain})</Option>)}
               </Select>
             </Form.Item>
           )}
 
           <Form.Item name="target_path" label="目标路径">
-            <Input
-              placeholder={
-                deployType === 'nginx_config'
-                  ? '/etc/nginx/nginx.conf'
-                  : deployType === 'certificate'
-                  ? '/etc/nginx/ssl'
-                  : '/tmp'
-              }
-            />
+            <Input placeholder={deployType === 'certificate' ? '/etc/nginx/ssl' : '/tmp'} />
           </Form.Item>
-
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="backup_enabled" valuePropName="checked">
-                <Switch checkedChildren="备份原文件" unCheckedChildren="不备份" />
+                <Switch checkedChildren="备份" unCheckedChildren="不备份" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -634,109 +529,90 @@ const DeploymentsPage: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* 日志查看对话框 */}
-      <Modal
-        title={`部署日志 - ${currentDeployment?.name || ''}`}
-        open={logModalVisible}
-        onCancel={() => {
-          setLogModalVisible(false);
+      {/* Log Drawer with terminal style */}
+      <Drawer
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>部署日志</span>
+            {currentDeployment && renderStatus(currentDeployment.status)}
+            {currentDeployment?.status === 'running' && sseConnected && (
+              <Tag color="blue" icon={<SyncOutlined spin />}>实时</Tag>
+            )}
+          </div>
+        }
+        open={drawerVisible}
+        onClose={() => {
+          setDrawerVisible(false);
           disconnectSSE();
           setCurrentDeployment(null);
+          setHistoricalLogs([]);
         }}
-        footer={[
-          currentDeployment?.status === 'running' && (
-            <Button
-              key="cancel"
-              danger
-              icon={<StopOutlined />}
-              onClick={() => currentDeployment && handleCancel(currentDeployment.id)}
-            >
-              取消部署
-            </Button>
-          ),
-          currentDeployment?.status !== 'running' && (
-            <Button
-              key="refresh"
-              icon={<ReloadOutlined />}
-              onClick={() => currentDeployment && loadHistoricalLogs(currentDeployment.id)}
-            >
-              刷新
-            </Button>
-          ),
-          <Button
-            key="close"
-            onClick={() => {
-              setLogModalVisible(false);
-              disconnectSSE();
-            }}
-          >
-            关闭
-          </Button>,
-        ]}
-        width={800}
+        width={700}
+        extra={
+          <Space>
+            {currentDeployment?.status === 'running' && (
+              <Button
+                danger
+                icon={<StopOutlined />}
+                size="small"
+                onClick={() => currentDeployment && handleCancel(currentDeployment.id)}
+              >
+                取消
+              </Button>
+            )}
+            {currentDeployment?.status !== 'running' && (
+              <Button
+                icon={<ReloadOutlined />}
+                size="small"
+                onClick={() => currentDeployment && loadHistoricalLogs(currentDeployment.id)}
+              >
+                刷新
+              </Button>
+            )}
+          </Space>
+        }
       >
+        {/* Deployment info */}
+        {currentDeployment && (
+          <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-tertiary)', borderRadius: 8 }}>
+            <Row gutter={16}>
+              <Col span={8}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>任务名称</div>
+                <div style={{ fontWeight: 500 }}>{currentDeployment.name}</div>
+              </Col>
+              <Col span={8}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>服务器</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{currentDeployment.server?.name || '-'}</div>
+              </Col>
+              <Col span={8}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>耗时</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                  {currentDeployment.duration ? `${currentDeployment.duration}s` : '-'}
+                </div>
+              </Col>
+            </Row>
+            {currentDeployment.error_msg && (
+              <div style={{ marginTop: 8 }}>
+                <Text type="danger" style={{ fontSize: 12 }}>{currentDeployment.error_msg}</Text>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Terminal log panel */}
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+          <span>终端日志</span>
+          <span style={{ fontFamily: 'var(--font-mono)' }}>{currentLogs.length} 条记录</span>
+        </div>
         <Spin spinning={logsLoading}>
-          {currentDeployment && (
-            <div style={{ marginBottom: 16 }}>
-              <Space>
-                {renderStatus(currentDeployment.status)}
-                {currentDeployment.status === 'running' && sseConnected && (
-                  <Alert
-                    message="实时日志"
-                    description="已连接到日志流，实时显示部署进度"
-                    type="info"
-                    showIcon
-                    icon={<SyncOutlined spin />}
-                    style={{ marginBottom: 8 }}
-                  />
-                )}
-                {currentDeployment.duration > 0 && (
-                  <Text type="secondary">耗时: {currentDeployment.duration}s</Text>
-                )}
-              </Space>
-              {currentDeployment.error_msg && (
-                <div style={{ marginTop: 8 }}>
-                  <Text type="danger">{currentDeployment.error_msg}</Text>
-                </div>
-              )}
-            </div>
-          )}
-          <Steps
-            direction="vertical"
-            size="small"
-            current={(currentDeployment?.status === 'running' ? realtimeLogs : historicalLogs).findIndex((l) => l.status === 'running')}
-            items={(currentDeployment?.status === 'running' ? realtimeLogs : historicalLogs).map((log) => ({
-              title: log.action,
-              status: getStepStatus(log),
-              description: (
-                <div>
-                  {log.output && (
-                    <pre
-                      style={{
-                        background: '#f5f5f5',
-                        padding: 8,
-                        borderRadius: 4,
-                        fontSize: 12,
-                        maxHeight: 100,
-                        overflow: 'auto',
-                        margin: '4px 0',
-                      }}
-                    >
-                      {log.output}
-                    </pre>
-                  )}
-                  {log.error_msg && <Text type="danger">{log.error_msg}</Text>}
-                </div>
-              ),
-            }))}
+          <div
+            className="terminal-log"
+            style={{ minHeight: 400, maxHeight: 'calc(100vh - 320px)' }}
+            dangerouslySetInnerHTML={{ __html: renderTerminalContent() }}
           />
-          {(currentDeployment?.status === 'running' ? realtimeLogs : historicalLogs).length === 0 && (
-            <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>
-              暂无日志
-            </div>
-          )}
+          <div ref={logEndRef} />
         </Spin>
-      </Modal>
+      </Drawer>
     </div>
   );
 };

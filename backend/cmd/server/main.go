@@ -137,6 +137,19 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 		nginx.GET("/:id/apply-history", nginxAPI.GetApplyHistory) // 获取配置应用历史
 		nginx.GET("/applies/:id", nginxAPI.GetApplyDetail)    // 获取应用详情
 		nginx.GET("/deploy-info/:server_id", nginxAPI.GetNginxDeployInfo) // 获取服务器上的 Nginx 部署信息
+
+		// Upstream 管理
+		nginx.GET("/:id/upstreams", nginxAPI.GetUpstreams)       // 获取 Upstream 列表
+		nginx.POST("/:id/upstreams", nginxAPI.CreateUpstream)    // 创建 Upstream
+		nginx.PUT("/upstreams/:uid", nginxAPI.UpdateUpstream)     // 更新 Upstream
+		nginx.DELETE("/upstreams/:uid", nginxAPI.DeleteUpstream)  // 删除 Upstream
+
+		// Location 管理
+		nginx.GET("/:id/locations", nginxAPI.GetLocations)       // 获取 Location 列表
+		nginx.POST("/:id/locations", nginxAPI.CreateLocation)    // 创建 Location
+		nginx.PUT("/locations/:lid", nginxAPI.UpdateLocation)     // 更新 Location
+		nginx.DELETE("/locations/:lid", nginxAPI.DeleteLocation)  // 删除 Location
+		nginx.PUT("/:id/locations/order", nginxAPI.UpdateLocationOrder) // 更新 Location 排序
 	}
 
 	// 部署管理 API

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin } from 'antd';
+import { ConfigProvider, Spin, theme as antTheme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useDispatch } from 'react-redux';
 import { useAuth } from './hooks/useAuth';
+import { useTheme } from './hooks/useTheme';
 import { logout } from './store/authSlice';
 import { getProfile } from './api/auth';
 import Login from './pages/Login';
@@ -15,7 +16,6 @@ import Servers from './pages/Servers';
 import NginxConfig from './pages/NginxConfig';
 import Deployments from './pages/Deployments';
 
-// 路由守卫
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
@@ -23,39 +23,34 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 function App() {
   const dispatch = useDispatch();
+  const { isDark } = useTheme();
   const [isValidating, setIsValidating] = useState(true);
 
-  // 应用启动时验证 token 有效性
   useEffect(() => {
     const validateToken = async () => {
-      // 如果 localStorage 中有 token，验证其有效性
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          // 调用后端验证 token
           await getProfile();
-          // token 有效，无需操作
-        } catch (error) {
-          // token 无效，清除认证状态
+        } catch {
           dispatch(logout());
         }
       }
       setIsValidating(false);
     };
-
     validateToken();
   }, [dispatch]);
 
-  // 验证中显示加载状态
   if (isValidating) {
     return (
       <div style={{
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        height: '100vh'
+        height: '100vh',
+        background: 'var(--bg-primary)',
       }}>
-        <Spin size="large" tip="加载中..." />
+        <Spin size="large" />
       </div>
     );
   }
@@ -64,10 +59,24 @@ function App() {
     <ConfigProvider
       locale={zhCN}
       theme={{
+        algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          colorPrimary: '#1890ff',
+          colorPrimary: isDark ? '#6366F1' : '#4F46E5',
+          colorSuccess: '#10B981',
+          colorWarning: '#F59E0B',
+          colorError: '#EF4444',
+          colorInfo: isDark ? '#6366F1' : '#4F46E5',
           borderRadius: 8,
           fontSize: 14,
+          fontFamily: "'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          colorBgContainer: isDark ? '#1E293B' : '#FFFFFF',
+          colorBgElevated: isDark ? '#1E293B' : '#FFFFFF',
+          colorBgLayout: isDark ? '#0F172A' : '#F8FAFC',
+          colorBorder: isDark ? '#334155' : '#E2E8F0',
+          colorBorderSecondary: isDark ? '#1E293B' : '#F1F5F9',
+          colorText: isDark ? '#F1F5F9' : '#0F172A',
+          colorTextSecondary: isDark ? '#94A3B8' : '#64748B',
+          colorTextTertiary: isDark ? '#64748B' : '#94A3B8',
         },
         components: {
           Card: {
@@ -79,6 +88,23 @@ function App() {
           },
           Table: {
             borderRadius: 8,
+          },
+          Menu: {
+            darkItemBg: 'transparent',
+            darkSubMenuItemBg: 'transparent',
+            darkItemSelectedBg: 'rgba(99, 102, 241, 0.15)',
+            darkItemColor: '#94A3B8',
+            darkItemSelectedColor: '#6366F1',
+            darkItemHoverColor: '#F1F5F9',
+            darkItemHoverBg: 'rgba(99, 102, 241, 0.08)',
+          },
+          Layout: {
+            siderBg: isDark ? '#0B1120' : '#FFFFFF',
+            headerBg: isDark ? '#0F172A' : '#FFFFFF',
+            bodyBg: isDark ? '#0F172A' : '#F8FAFC',
+          },
+          Input: {
+            activeBorderColor: isDark ? '#6366F1' : '#4F46E5',
           },
         },
       }}
@@ -96,18 +122,12 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="servers" element={<Servers />} />
-
-            {/* Nginx 管理 */}
             <Route path="middleware/nginx/packages" element={<Middleware />} />
             <Route path="middleware/nginx/certificates" element={<Certificates />} />
             <Route path="middleware/nginx/configs" element={<NginxConfig />} />
             <Route path="middleware/nginx/deployments" element={<Deployments />} />
-
-            {/* Redis 管理 */}
             <Route path="middleware/redis/packages" element={<Middleware />} />
             <Route path="middleware/redis/deployments" element={<Deployments />} />
-
-            {/* OpenSSH 管理 */}
             <Route path="middleware/openssh/packages" element={<Middleware />} />
             <Route path="middleware/openssh/deployments" element={<Deployments />} />
           </Route>

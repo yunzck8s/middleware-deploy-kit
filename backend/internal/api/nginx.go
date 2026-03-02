@@ -48,6 +48,12 @@ type CreateNginxConfigRequest struct {
 	AccessLogPath     string `json:"access_log_path"`
 	ErrorLogPath      string `json:"error_log_path"`
 	LogFormat         string `json:"log_format"`
+	RotateEnabled     bool   `json:"rotate_enabled"`
+	RotateFrequency   string `json:"rotate_frequency"`
+	RotateCount       int    `json:"rotate_count"`
+	RotateMaxSize     string `json:"rotate_max_size"`
+	RotateCompress    bool   `json:"rotate_compress"`
+	RotateDateExt     bool   `json:"rotate_date_ext"`
 	EnableProxy       bool   `json:"enable_proxy"`
 	ProxyPass         string                 `json:"proxy_pass"`
 	Locations         []models.NginxLocation `json:"locations"`
@@ -95,6 +101,12 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		AccessLogPath:     defaultString(req.AccessLogPath, "/var/log/nginx/access.log"),
 		ErrorLogPath:      defaultString(req.ErrorLogPath, "/var/log/nginx/error.log"),
 		LogFormat:         defaultString(req.LogFormat, "main"),
+		RotateEnabled:     req.RotateEnabled,
+		RotateFrequency:   defaultString(req.RotateFrequency, "daily"),
+		RotateCount:       defaultInt(req.RotateCount, 14),
+		RotateMaxSize:     defaultString(req.RotateMaxSize, "100M"),
+		RotateCompress:    req.RotateCompress,
+		RotateDateExt:     req.RotateDateExt,
 		EnableProxy:       req.EnableProxy,
 		ProxyPass:         req.ProxyPass,
 		ClientMaxBodySize: defaultString(req.ClientMaxBodySize, "100m"),
@@ -153,7 +165,7 @@ func (n *NginxAPI) List(c *gin.Context) {
 	}
 
 	var configs []models.NginxConfig
-	query := db.DB.Model(&models.NginxConfig{}).Preload("Server").Preload("Certificate").Preload("Locations")
+	query := db.DB.Model(&models.NginxConfig{}).Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams")
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -189,7 +201,7 @@ func (n *NginxAPI) Get(c *gin.Context) {
 	}
 
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Server").Preload("Certificate").Preload("Locations").First(&cfg, id).Error; err != nil {
+	if err := db.DB.Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -235,6 +247,12 @@ func (n *NginxAPI) Update(c *gin.Context) {
 	cfg.AccessLogPath = req.AccessLogPath
 	cfg.ErrorLogPath = req.ErrorLogPath
 	cfg.LogFormat = req.LogFormat
+	cfg.RotateEnabled = req.RotateEnabled
+	cfg.RotateFrequency = req.RotateFrequency
+	cfg.RotateCount = req.RotateCount
+	cfg.RotateMaxSize = req.RotateMaxSize
+	cfg.RotateCompress = req.RotateCompress
+	cfg.RotateDateExt = req.RotateDateExt
 	cfg.EnableProxy = req.EnableProxy
 	cfg.ProxyPass = req.ProxyPass
 	cfg.ClientMaxBodySize = req.ClientMaxBodySize
@@ -319,7 +337,7 @@ func (n *NginxAPI) Generate(c *gin.Context) {
 	}
 
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Certificate").Preload("Locations").First(&cfg, id).Error; err != nil {
+	if err := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -360,6 +378,12 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 		AccessLogPath:     defaultString(req.AccessLogPath, "/var/log/nginx/access.log"),
 		ErrorLogPath:      defaultString(req.ErrorLogPath, "/var/log/nginx/error.log"),
 		LogFormat:         defaultString(req.LogFormat, "main"),
+		RotateEnabled:     req.RotateEnabled,
+		RotateFrequency:   defaultString(req.RotateFrequency, "daily"),
+		RotateCount:       defaultInt(req.RotateCount, 14),
+		RotateMaxSize:     defaultString(req.RotateMaxSize, "100M"),
+		RotateCompress:    req.RotateCompress,
+		RotateDateExt:     req.RotateDateExt,
 		EnableProxy:       req.EnableProxy,
 		ProxyPass:         req.ProxyPass,
 		ClientMaxBodySize: defaultString(req.ClientMaxBodySize, "100m"),
@@ -386,9 +410,15 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
+	result := gin.H{
 		"content": content,
-	})
+	}
+	logrotateContent, _ := generateLogrotateConfig(cfg)
+	if logrotateContent != "" {
+		result["logrotate_content"] = logrotateContent
+	}
+
+	response.Success(c, result)
 }
 
 // generateNginxConfig 生成 Nginx 配置文件内容
@@ -451,6 +481,37 @@ http {
     gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
 {{end}}
 
+{{if .CacheEnabled}}
+    # 缓存配置
+    proxy_cache_path {{.CachePath}} levels=1:2 keys_zone=app_cache:{{.CacheSize}} max_size=1g inactive={{.CacheValidTime}};
+{{end}}
+
+{{if .RateLimitEnabled}}
+    # 速率限制
+    limit_req_zone $binary_remote_addr zone={{if .RateLimitZone}}{{.RateLimitZone}}{{else}}rate_limit{{end}}:10m rate=10r/s;
+{{end}}
+
+{{if .ConnLimitEnabled}}
+    # 连接数限制
+    limit_conn_zone $binary_remote_addr zone={{if .ConnLimitZone}}{{.ConnLimitZone}}{{else}}conn_limit{{end}}:10m;
+{{end}}
+
+{{if .Upstreams}}
+    # Upstream 配置
+{{range .Upstreams}}
+    upstream {{.Name}} {
+{{if eq .LoadBalance "least_conn"}}
+        least_conn;
+{{else if eq .LoadBalance "ip_hash"}}
+        ip_hash;
+{{end}}
+{{if .Servers}}
+        {{.Servers}}
+{{end}}
+    }
+{{end}}
+{{end}}
+
 {{if .EnableHTTP}}
     # HTTP Server
     server {
@@ -461,6 +522,13 @@ http {
 {{else}}
         root {{.RootPath}};
         index {{.IndexFiles}};
+
+{{if .RateLimitEnabled}}
+        limit_req zone={{if .RateLimitZone}}{{.RateLimitZone}}{{else}}rate_limit{{end}} burst={{.RateLimitBurst}} nodelay;
+{{end}}
+{{if .ConnLimitEnabled}}
+        limit_conn {{if .ConnLimitZone}}{{.ConnLimitZone}}{{else}}conn_limit{{end}} {{.ConnLimitNum}};
+{{end}}
 
 {{if .EnableProxy}}
 {{if .Locations}}{{range .Locations}}
@@ -512,12 +580,34 @@ http {
         ssl_session_cache shared:SSL:50m;
         ssl_session_tickets off;
 
-        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_protocols {{if .SSLProtocols}}{{.SSLProtocols}}{{else}}TLSv1.2 TLSv1.3{{end}};
+{{if .SSLCiphers}}
+        ssl_ciphers {{.SSLCiphers}};
+{{else}}
         ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+{{end}}
         ssl_prefer_server_ciphers off;
+
+{{if .EnableHSTS}}
+        # HSTS
+        add_header Strict-Transport-Security "max-age={{.HSTSMaxAge}}; includeSubDomains" always;
+{{end}}
+
+{{if .EnableOCSP}}
+        # OCSP Stapling
+        ssl_stapling on;
+        ssl_stapling_verify on;
+{{end}}
 
         root {{.RootPath}};
         index {{.IndexFiles}};
+
+{{if .RateLimitEnabled}}
+        limit_req zone={{if .RateLimitZone}}{{.RateLimitZone}}{{else}}rate_limit{{end}} burst={{.RateLimitBurst}} nodelay;
+{{end}}
+{{if .ConnLimitEnabled}}
+        limit_conn {{if .ConnLimitZone}}{{.ConnLimitZone}}{{else}}conn_limit{{end}} {{.ConnLimitNum}};
+{{end}}
 
 {{if .EnableProxy}}
 {{if .Locations}}{{range .Locations}}
@@ -575,6 +665,50 @@ http {
 	return buf.String(), nil
 }
 
+// generateLogrotateConfig 生成 logrotate 配置内容
+func generateLogrotateConfig(cfg *models.NginxConfig) (string, error) {
+	if !cfg.RotateEnabled {
+		return "", nil
+	}
+
+	tmpl := `{{.AccessLogPath}}
+{{.ErrorLogPath}}
+{
+    {{.RotateFrequency}}
+    rotate {{.RotateCount}}
+    missingok
+    notifempty
+{{- if .RotateMaxSize}}
+    maxsize {{.RotateMaxSize}}
+{{- end}}
+{{- if .RotateCompress}}
+    compress
+    delaycompress
+{{- end}}
+{{- if .RotateDateExt}}
+    dateext
+    dateformat -%Y%m%d
+{{- end}}
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 $(cat /var/run/nginx.pid) || true
+    endscript
+}
+`
+
+	t, err := template.New("logrotate").Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, cfg); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
 func defaultString(s, def string) string {
 	if s == "" {
 		return def
@@ -614,7 +748,7 @@ func (n *NginxAPI) ApplyConfig(c *gin.Context) {
 
 	// 验证配置存在
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Certificate").Preload("Locations").First(&cfg, id).Error; err != nil {
+	if err := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -883,6 +1017,82 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 
 	n.addApplyLog(applyID, stepNum, "上传新配置文件", "success", "配置文件已上传至: "+targetFile+"\n验证:\n"+verifyOutputStr, "")
 
+	// 步骤: 部署 logrotate 配置（如果启用）
+	if cfg.RotateEnabled {
+		stepNum++
+		n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "running", "", "")
+
+		logrotateContent, err := generateLogrotateConfig(cfg)
+		if err != nil {
+			n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "failed", "", err.Error())
+			finalStatus = "failed"
+			errorMsg = "生成 logrotate 配置失败"
+			return
+		}
+
+		var logrotateOutput strings.Builder
+
+		// Step A: 检测现有 logrotate 配置
+		checkCmd := "test -f /etc/logrotate.d/nginx && echo exists || echo notexists"
+		session, _ = sshClient.NewSession()
+		checkResult, _ := session.CombinedOutput(checkCmd)
+		session.Close()
+		logrotateExists := strings.TrimSpace(string(checkResult)) == "exists"
+
+		if logrotateExists {
+			logrotateOutput.WriteString("检测到已有 logrotate 配置，将进行更新\n")
+
+			// Step B: 备份现有 logrotate 配置
+			backupCmd := "sudo cp /etc/logrotate.d/nginx /etc/logrotate.d/nginx.bak." + startTime.Format("20060102150405")
+			session, _ = sshClient.NewSession()
+			bkOutput, bkErr := session.CombinedOutput(backupCmd)
+			session.Close()
+			if bkErr != nil {
+				logrotateOutput.WriteString("备份 logrotate 配置失败: " + string(bkOutput) + "\n")
+				n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "failed", logrotateOutput.String(), bkErr.Error())
+				finalStatus = "failed"
+				errorMsg = "备份 logrotate 配置失败"
+				return
+			}
+			logrotateOutput.WriteString("已备份至: /etc/logrotate.d/nginx.bak." + startTime.Format("20060102150405") + "\n")
+		} else {
+			logrotateOutput.WriteString("未检测到 logrotate 配置，将创建新配置\n")
+		}
+
+		// Step C: 部署新 logrotate 配置
+		tmpLogrotate := "/tmp/nginx_logrotate_" + startTime.Format("20060102150405")
+		lrFile, err := sftpClient.Create(tmpLogrotate)
+		if err != nil {
+			n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "failed", logrotateOutput.String(), err.Error())
+			finalStatus = "failed"
+			errorMsg = "上传 logrotate 配置失败"
+			return
+		}
+		_, err = lrFile.Write([]byte(logrotateContent))
+		lrFile.Close()
+		if err != nil {
+			n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "failed", logrotateOutput.String(), err.Error())
+			finalStatus = "failed"
+			errorMsg = "写入 logrotate 配置失败"
+			return
+		}
+
+		mvLrCmd := "sudo mv " + tmpLogrotate + " /etc/logrotate.d/nginx && sudo chmod 644 /etc/logrotate.d/nginx"
+		session, _ = sshClient.NewSession()
+		mvLrOutput, mvLrErr := session.CombinedOutput(mvLrCmd)
+		session.Close()
+		if mvLrErr != nil {
+			logrotateOutput.WriteString("部署 logrotate 配置失败: " + string(mvLrOutput) + "\n")
+			n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "failed", logrotateOutput.String(), mvLrErr.Error())
+			finalStatus = "failed"
+			errorMsg = "部署 logrotate 配置失败"
+			return
+		}
+		logrotateOutput.WriteString("logrotate 配置已部署至: /etc/logrotate.d/nginx\n")
+
+		n.addApplyLog(applyID, stepNum, "部署日志轮转配置", "success", logrotateOutput.String(), "")
+	}
+
 	// 步骤5: 测试配置
 	stepNum++
 	n.addApplyLog(applyID, stepNum, "测试 Nginx 配置", "running", "", "")
@@ -1045,6 +1255,336 @@ func connectToServer(server *models.Server) (*ssh.Client, *sftp.Client, error) {
 	}
 
 	return sshClient, sftpClient, nil
+}
+
+// =====================
+// Upstream CRUD
+// =====================
+
+// GetUpstreams 获取 Nginx 配置的 Upstream 列表
+func (n *NginxAPI) GetUpstreams(c *gin.Context) {
+	configID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 ID")
+		return
+	}
+
+	// 验证配置存在
+	var cfg models.NginxConfig
+	if err := db.DB.First(&cfg, configID).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	var upstreams []models.NginxUpstream
+	if err := db.DB.Where("nginx_config_id = ?", configID).Order("created_at ASC").Find(&upstreams).Error; err != nil {
+		logger.Errorf("查询 Upstream 列表失败: %v", err)
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	response.Success(c, upstreams)
+}
+
+// CreateUpstream 创建 Upstream
+func (n *NginxAPI) CreateUpstream(c *gin.Context) {
+	configID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 ID")
+		return
+	}
+
+	// 验证配置存在
+	var cfg models.NginxConfig
+	if err := db.DB.First(&cfg, configID).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	var upstream models.NginxUpstream
+	if err := c.ShouldBindJSON(&upstream); err != nil {
+		response.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	upstream.NginxConfigID = uint(configID)
+	upstream.ID = 0 // 确保创建新记录
+
+	// 检查同一配置下 upstream 名称是否重复
+	var existing models.NginxUpstream
+	if db.DB.Where("nginx_config_id = ? AND name = ?", configID, upstream.Name).First(&existing).Error == nil {
+		response.Conflict(c, "Upstream 名称已存在")
+		return
+	}
+
+	if err := db.DB.Create(&upstream).Error; err != nil {
+		logger.Errorf("创建 Upstream 失败: %v", err)
+		response.InternalServerError(c, "创建失败")
+		return
+	}
+
+	logger.Infof("Upstream 创建成功: %s (配置ID: %d)", upstream.Name, configID)
+	response.SuccessWithMessage(c, "创建成功", upstream)
+}
+
+// UpdateUpstream 更新 Upstream
+func (n *NginxAPI) UpdateUpstream(c *gin.Context) {
+	uid, err := strconv.ParseUint(c.Param("uid"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 Upstream ID")
+		return
+	}
+
+	var upstream models.NginxUpstream
+	if err := db.DB.First(&upstream, uid).Error; err != nil {
+		response.NotFound(c, "Upstream 不存在")
+		return
+	}
+
+	var req models.NginxUpstream
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	// 检查名称是否与同一配置下其他 upstream 重复
+	if req.Name != upstream.Name {
+		var existing models.NginxUpstream
+		if db.DB.Where("nginx_config_id = ? AND name = ? AND id != ?", upstream.NginxConfigID, req.Name, uid).First(&existing).Error == nil {
+			response.Conflict(c, "Upstream 名称已存在")
+			return
+		}
+	}
+
+	upstream.Name = req.Name
+	upstream.LoadBalance = req.LoadBalance
+	upstream.Servers = req.Servers
+
+	if err := db.DB.Save(&upstream).Error; err != nil {
+		logger.Errorf("更新 Upstream 失败: %v", err)
+		response.InternalServerError(c, "更新失败")
+		return
+	}
+
+	logger.Infof("Upstream 更新成功: %s (ID: %d)", upstream.Name, upstream.ID)
+	response.SuccessWithMessage(c, "更新成功", upstream)
+}
+
+// DeleteUpstream 删除 Upstream
+func (n *NginxAPI) DeleteUpstream(c *gin.Context) {
+	uid, err := strconv.ParseUint(c.Param("uid"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 Upstream ID")
+		return
+	}
+
+	var upstream models.NginxUpstream
+	if err := db.DB.First(&upstream, uid).Error; err != nil {
+		response.NotFound(c, "Upstream 不存在")
+		return
+	}
+
+	if err := db.DB.Delete(&upstream).Error; err != nil {
+		logger.Errorf("删除 Upstream 失败: %v", err)
+		response.InternalServerError(c, "删除失败")
+		return
+	}
+
+	logger.Infof("Upstream 已删除: %s (ID: %d)", upstream.Name, upstream.ID)
+	response.SuccessWithMessage(c, "删除成功", nil)
+}
+
+// =====================
+// Location CRUD
+// =====================
+
+// GetLocations 获取 Nginx 配置的 Location 列表
+func (n *NginxAPI) GetLocations(c *gin.Context) {
+	configID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 ID")
+		return
+	}
+
+	// 验证配置存在
+	var cfg models.NginxConfig
+	if err := db.DB.First(&cfg, configID).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	var locations []models.NginxLocation
+	if err := db.DB.Where("nginx_config_id = ?", configID).Order("sort_order ASC").Find(&locations).Error; err != nil {
+		logger.Errorf("查询 Location 列表失败: %v", err)
+		response.InternalServerError(c, "查询失败")
+		return
+	}
+
+	response.Success(c, locations)
+}
+
+// CreateLocation 创建 Location
+func (n *NginxAPI) CreateLocation(c *gin.Context) {
+	configID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 ID")
+		return
+	}
+
+	// 验证配置存在
+	var cfg models.NginxConfig
+	if err := db.DB.First(&cfg, configID).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	var location models.NginxLocation
+	if err := c.ShouldBindJSON(&location); err != nil {
+		response.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	location.NginxConfigID = uint(configID)
+	location.ID = 0 // 确保创建新记录
+
+	// 如果没有设置排序，取当前最大值 +1
+	if location.SortOrder == 0 {
+		var maxOrder int
+		db.DB.Model(&models.NginxLocation{}).Where("nginx_config_id = ?", configID).
+			Select("COALESCE(MAX(sort_order), -1)").Scan(&maxOrder)
+		location.SortOrder = maxOrder + 1
+	}
+
+	if err := db.DB.Create(&location).Error; err != nil {
+		logger.Errorf("创建 Location 失败: %v", err)
+		response.InternalServerError(c, "创建失败")
+		return
+	}
+
+	logger.Infof("Location 创建成功: %s (配置ID: %d)", location.Path, configID)
+	response.SuccessWithMessage(c, "创建成功", location)
+}
+
+// UpdateLocation 更新 Location
+func (n *NginxAPI) UpdateLocation(c *gin.Context) {
+	lid, err := strconv.ParseUint(c.Param("lid"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 Location ID")
+		return
+	}
+
+	var location models.NginxLocation
+	if err := db.DB.First(&location, lid).Error; err != nil {
+		response.NotFound(c, "Location 不存在")
+		return
+	}
+
+	var req models.NginxLocation
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	location.Path = req.Path
+	location.MatchType = req.MatchType
+	location.HandlerType = req.HandlerType
+	location.Root = req.Root
+	location.TryFiles = req.TryFiles
+	location.ProxyPass = req.ProxyPass
+	location.ProxySetHeaders = req.ProxySetHeaders
+	location.RedirectURL = req.RedirectURL
+	location.RedirectCode = req.RedirectCode
+	location.ReturnCode = req.ReturnCode
+	location.ReturnBody = req.ReturnBody
+	location.SortOrder = req.SortOrder
+
+	if err := db.DB.Save(&location).Error; err != nil {
+		logger.Errorf("更新 Location 失败: %v", err)
+		response.InternalServerError(c, "更新失败")
+		return
+	}
+
+	logger.Infof("Location 更新成功: %s (ID: %d)", location.Path, location.ID)
+	response.SuccessWithMessage(c, "更新成功", location)
+}
+
+// DeleteLocation 删除 Location
+func (n *NginxAPI) DeleteLocation(c *gin.Context) {
+	lid, err := strconv.ParseUint(c.Param("lid"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 Location ID")
+		return
+	}
+
+	var location models.NginxLocation
+	if err := db.DB.First(&location, lid).Error; err != nil {
+		response.NotFound(c, "Location 不存在")
+		return
+	}
+
+	if err := db.DB.Delete(&location).Error; err != nil {
+		logger.Errorf("删除 Location 失败: %v", err)
+		response.InternalServerError(c, "删除失败")
+		return
+	}
+
+	logger.Infof("Location 已删除: %s (ID: %d)", location.Path, location.ID)
+	response.SuccessWithMessage(c, "删除成功", nil)
+}
+
+// UpdateLocationOrderRequest Location 排序请求
+type UpdateLocationOrderRequest struct {
+	Orders []struct {
+		ID        uint `json:"id"`
+		SortOrder int  `json:"sort_order"`
+	} `json:"orders" binding:"required"`
+}
+
+// UpdateLocationOrder 更新 Location 排序
+func (n *NginxAPI) UpdateLocationOrder(c *gin.Context) {
+	configID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.BadRequest(c, "无效的 ID")
+		return
+	}
+
+	// 验证配置存在
+	var cfg models.NginxConfig
+	if err := db.DB.First(&cfg, configID).Error; err != nil {
+		response.NotFound(c, "配置不存在")
+		return
+	}
+
+	var req UpdateLocationOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "参数错误: "+err.Error())
+		return
+	}
+
+	tx := db.DB.Begin()
+	for _, order := range req.Orders {
+		if err := tx.Model(&models.NginxLocation{}).
+			Where("id = ? AND nginx_config_id = ?", order.ID, configID).
+			Update("sort_order", order.SortOrder).Error; err != nil {
+			tx.Rollback()
+			logger.Errorf("更新 Location 排序失败: %v", err)
+			response.InternalServerError(c, "更新排序失败")
+			return
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		logger.Errorf("提交排序事务失败: %v", err)
+		response.InternalServerError(c, "更新排序失败")
+		return
+	}
+
+	// 返回更新后的 locations
+	var locations []models.NginxLocation
+	db.DB.Where("nginx_config_id = ?", configID).Order("sort_order ASC").Find(&locations)
+
+	logger.Infof("Location 排序更新成功 (配置ID: %d)", configID)
+	response.SuccessWithMessage(c, "排序更新成功", locations)
 }
 
 // GetNginxDeployInfo 获取服务器上的 Nginx 部署信息

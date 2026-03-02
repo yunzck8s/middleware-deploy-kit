@@ -27,7 +27,7 @@ describe('Login Component', () => {
   it('renders login form correctly', () => {
     renderWithProviders(<Login />);
 
-    expect(screen.getByText('中间件部署平台')).toBeInTheDocument();
+    expect(screen.getByText('MDK Deploy')).toBeInTheDocument();
     expect(screen.getByText('Middleware Deploy Kit')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('用户名')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('密码')).toBeInTheDocument();

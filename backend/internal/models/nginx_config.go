@@ -37,6 +37,14 @@ type NginxConfig struct {
 	ErrorLogPath  string `json:"error_log_path" gorm:"default:'/var/log/nginx/error.log'"`   // 错误日志
 	LogFormat     string `json:"log_format" gorm:"default:'main'"`                            // 日志格式：main 或 json
 
+	// 日志轮转配置
+	RotateEnabled   bool   `json:"rotate_enabled" gorm:"default:false"`
+	RotateFrequency string `json:"rotate_frequency" gorm:"default:'daily'"`
+	RotateCount     int    `json:"rotate_count" gorm:"default:14"`
+	RotateMaxSize   string `json:"rotate_max_size" gorm:"default:'100M'"`
+	RotateCompress  bool   `json:"rotate_compress" gorm:"default:true"`
+	RotateDateExt   bool   `json:"rotate_date_ext" gorm:"default:true"`
+
 	// 代理配置（反向代理）
 	EnableProxy    bool   `json:"enable_proxy" gorm:"default:false"`    // 是否启用反向代理
 	ProxyPass      string `json:"proxy_pass"`                            // 代理地址
@@ -46,6 +54,30 @@ type NginxConfig struct {
 	ClientMaxBodySize string `json:"client_max_body_size" gorm:"default:'100m'"` // 客户端最大请求体
 	Gzip              bool   `json:"gzip" gorm:"default:true"`                   // 是否启用 Gzip
 	CustomConfig      string `json:"custom_config" gorm:"type:text"`             // 自定义配置片段
+
+	// SSL/TLS 高级配置
+	SSLProtocols string `json:"ssl_protocols" gorm:"default:'TLSv1.2 TLSv1.3'"`
+	SSLCiphers   string `json:"ssl_ciphers"`
+	EnableHSTS   bool   `json:"enable_hsts" gorm:"default:false"`
+	HSTSMaxAge   int    `json:"hsts_max_age" gorm:"default:31536000"`
+	EnableOCSP   bool   `json:"enable_ocsp" gorm:"default:false"`
+
+	// 缓存配置
+	CacheEnabled   bool   `json:"cache_enabled" gorm:"default:false"`
+	CachePath      string `json:"cache_path" gorm:"default:'/var/cache/nginx'"`
+	CacheSize      string `json:"cache_size" gorm:"default:'10m'"`
+	CacheValidTime string `json:"cache_valid_time" gorm:"default:'60m'"`
+
+	// 安全配置
+	RateLimitEnabled bool   `json:"rate_limit_enabled" gorm:"default:false"`
+	RateLimitZone    string `json:"rate_limit_zone"`
+	RateLimitBurst   int    `json:"rate_limit_burst" gorm:"default:20"`
+	ConnLimitEnabled bool   `json:"conn_limit_enabled" gorm:"default:false"`
+	ConnLimitZone    string `json:"conn_limit_zone"`
+	ConnLimitNum     int    `json:"conn_limit_num" gorm:"default:100"`
+	AllowIPs         string `json:"allow_ips" gorm:"type:text"`
+	DenyIPs          string `json:"deny_ips" gorm:"type:text"`
+	SecurityHeaders  string `json:"security_headers" gorm:"type:text"`
 
 	// 状态
 	Status    string    `json:"status" gorm:"default:'draft'"` // draft, active, disabled
@@ -57,6 +89,7 @@ type NginxConfig struct {
 	Server      *Server         `json:"server,omitempty" gorm:"foreignKey:ServerID"`
 	Certificate *Certificate    `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
 	Locations   []NginxLocation `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Upstreams   []NginxUpstream `json:"upstreams,omitempty" gorm:"foreignKey:NginxConfigID"`
 }
 
 // TableName 表名
