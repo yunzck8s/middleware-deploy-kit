@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Card,
-  Table,
   Button,
-  Upload,
-  Modal,
+  Drawer,
   Form,
   Input,
   Select,
+  Table,
+  Upload,
   message,
   Popconfirm,
   Tag,
-  Space,
   Row,
   Col,
 } from 'antd';
@@ -22,51 +19,42 @@ import {
   ReloadOutlined,
   InboxOutlined,
   SearchOutlined,
+  DeploymentUnitOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { getPackageList, uploadPackage, deletePackage } from '../api/package';
 import type { MiddlewarePackage } from '../types';
+import PageHeader from '../components/common/PageHeader';
+import MetricTile from '../components/common/MetricTile';
+import SectionCard from '../components/common/SectionCard';
+import FilterToolbar from '../components/common/FilterToolbar';
+import ActionGroup from '../components/common/ActionGroup';
+import EmptyState from '../components/common/EmptyState';
+import { formatDateTime, formatFileSize } from '../utils/formatters';
 
 const { Dragger } = Upload;
 const { Option } = Select;
 
-const MIDDLEWARE_TYPE_MAP: Record<string, { name: string; displayName: string }> = {
-  nginx: { name: 'nginx', displayName: 'Nginx' },
-  redis: { name: 'redis', displayName: 'Redis' },
-  openssh: { name: 'openssh', displayName: 'OpenSSH' },
-};
-
 const Middleware: React.FC = () => {
-  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [packages, setPackages] = useState<MiddlewarePackage[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [uploadVisible, setUploadVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm();
 
-  const getMiddlewareType = (): string => {
-    const path = location.pathname;
-    if (path.includes('/nginx/')) return 'nginx';
-    if (path.includes('/redis/')) return 'redis';
-    if (path.includes('/openssh/')) return 'openssh';
-    return 'nginx';
-  };
-
-  const middlewareType = getMiddlewareType();
-  const middlewareInfo = MIDDLEWARE_TYPE_MAP[middlewareType];
-
   const loadPackages = async () => {
     try {
       setLoading(true);
-      const response = await getPackageList({ name: middlewareType, page, page_size: pageSize });
-      setPackages(response.packages);
-      setTotal(response.total);
+      const response = await getPackageList({ name: 'nginx', page: 1, page_size: 1000 });
+      setPackages(response.packages || []);
+      setTotal(response.packages?.length || 0);
     } catch (error: any) {
       message.error(error.message || '加载离线包列表失败');
     } finally {
@@ -76,22 +64,41 @@ const Middleware: React.FC = () => {
 
   useEffect(() => {
     loadPackages();
-  }, [page, pageSize, middlewareType]);
+  }, []);
+
+  const activePackages = useMemo(() => packages.filter((item) => item.status === 'active'), [packages]);
+  const latestPackage = useMemo(
+    () => activePackages.slice().sort((left, right) => right.version.localeCompare(left.version))[0],
+    [activePackages],
+  );
+  const osFootprint = useMemo(() => new Set(activePackages.map((item) => `${item.os_type}-${item.os_version}`)).size, [activePackages]);
+
+  const filteredPackages = useMemo(() => {
+    if (!searchText) return activePackages;
+    const lower = searchText.toLowerCase();
+    return activePackages.filter((item) =>
+      item.display_name?.toLowerCase().includes(lower)
+      || item.version?.toLowerCase().includes(lower)
+      || item.file_name?.toLowerCase().includes(lower)
+      || `${item.os_type} ${item.os_version}`.toLowerCase().includes(lower),
+    );
+  }, [activePackages, searchText]);
 
   const handleUpload = async (values: any) => {
     if (fileList.length === 0) {
       message.error('请选择要上传的文件');
       return;
     }
+
     try {
       setUploading(true);
       await uploadPackage({
         ...values,
-        name: middlewareType,
+        name: 'nginx',
         file: fileList[0].originFileObj as File,
       });
-      message.success(`${middlewareInfo.displayName} 离线包上传成功`);
-      setUploadModalVisible(false);
+      message.success('Nginx 离线包上传成功');
+      setUploadVisible(false);
       form.resetFields();
       setFileList([]);
       loadPackages();
@@ -112,34 +119,16 @@ const Middleware: React.FC = () => {
     }
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-  };
-
-  const filteredPackages = packages.filter((p) => {
-    if (!searchText) return true;
-    const lower = searchText.toLowerCase();
-    return (
-      p.display_name?.toLowerCase().includes(lower) ||
-      p.version?.toLowerCase().includes(lower) ||
-      p.file_name?.toLowerCase().includes(lower)
-    );
-  });
-
   const columns: ColumnsType<MiddlewarePackage> = [
     {
-      title: '名称',
-      dataIndex: 'display_name',
-      key: 'display_name',
-      render: (text, record) => (
+      title: '版本',
+      dataIndex: 'version',
+      key: 'version',
+      render: (value, record) => (
         <div>
-          <div style={{ fontWeight: 500 }}>{text}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-            {record.name} {record.version}
+          <div style={{ fontWeight: 700 }}>{record.display_name || `Nginx ${value}`}</div>
+          <div style={{ marginTop: 4, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+            nginx {value}
           </div>
         </div>
       ),
@@ -147,51 +136,34 @@ const Middleware: React.FC = () => {
     {
       title: '操作系统',
       key: 'os',
-      render: (_, record) => (
-        <Tag color="cyan">
-          {record.os_type} {record.os_version}
-        </Tag>
-      ),
+      render: (_, record) => <Tag>{record.os_type} {record.os_version}</Tag>,
     },
     {
-      title: '文件名',
+      title: '文件',
       dataIndex: 'file_name',
       key: 'file_name',
       ellipsis: true,
-      render: (text) => (
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{text}</span>
-      ),
+      render: (value: string) => <span className="mono" style={{ fontSize: 12 }}>{value}</span>,
     },
     {
       title: '大小',
       dataIndex: 'file_size',
       key: 'file_size',
-      width: 100,
-      render: (size: number) => (
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{formatFileSize(size)}</span>
-      ),
+      width: 120,
+      render: (value: number) => formatFileSize(value),
     },
     {
       title: '上传时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (time: string) => (
-        <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
-          {new Date(time).toLocaleString('zh-CN')}
-        </span>
-      ),
+      render: (value: string) => <span style={{ color: 'var(--text-secondary)' }}>{formatDateTime(value, 'YYYY-MM-DD HH:mm')}</span>,
     },
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 96,
       render: (_, record) => (
-        <Popconfirm
-          title="确定要删除这个离线包吗？"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
+        <Popconfirm title="确定要删除这个离线包吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -199,85 +171,97 @@ const Middleware: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Card
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontWeight: 600 }}>{middlewareInfo.displayName} 离线包管理</span>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Nginx 离线包管理"
+        title="离线包资源中心"
+        subtitle="维护 Nginx 离线安装包、适配的系统版本和 metadata 驱动参数，为部署任务提供标准输入。"
+        actions={(
+          <ActionGroup>
+            <Button icon={<ReloadOutlined />} onClick={loadPackages}>刷新</Button>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传离线包</Button>
+          </ActionGroup>
+        )}
+      />
+
+      <div className="metric-grid">
+        <MetricTile label="当前资源数" value={total} hint="可被部署任务直接消费的离线包" icon={<InboxOutlined />} tone="info" loading={loading} />
+        <MetricTile label="最新版本" value={latestPackage?.version || '—'} hint={latestPackage ? '按当前列表中的版本号识别' : '暂无可用版本'} icon={<DeploymentUnitOutlined />} loading={loading} />
+        <MetricTile label="系统覆盖" value={osFootprint} hint="不同 OS / 版本组合数量" icon={<SafetyCertificateOutlined />} tone="success" loading={loading} />
+      </div>
+
+      <SectionCard
+        title="资源列表"
+        subtitle="按版本、系统和上传时间查看可部署的 Nginx 离线包。"
+        className="ops-table"
+      >
+        <FilterToolbar
+          left={(
             <Input
               prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)' }} />}
-              placeholder="搜索名称或版本"
+              placeholder="搜索版本、文件名或系统"
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              style={{ width: 200, background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
-              size="small"
+              onChange={(event) => setSearchText(event.target.value)}
+              style={{ width: 280 }}
               allowClear
             />
-          </div>
-        }
-        extra={
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={loadPackages} size="small">
-              刷新
-            </Button>
-            <Button
-              type="primary"
-              icon={<UploadOutlined />}
-              onClick={() => setUploadModalVisible(true)}
-              size="small"
-            >
-              上传离线包
-            </Button>
-          </Space>
-        }
-        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-      >
-        <Table
-          columns={columns}
-          dataSource={filteredPackages}
-          rowKey="id"
-          loading={loading}
-          size="middle"
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 个离线包`,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-            },
-          }}
+          )}
+          right={<span className="summary-card__hint">metadata 驱动参数将在部署时自动展开</span>}
         />
-      </Card>
 
-      <Modal
-        title={`上传 ${middlewareInfo.displayName} 离线包`}
-        open={uploadModalVisible}
-        onCancel={() => {
-          setUploadModalVisible(false);
+        {filteredPackages.length === 0 && !loading ? (
+          <EmptyState
+            title="还没有可用的 Nginx 离线包"
+            description="上传 ZIP 离线包后，平台会读取其中的 metadata.json，并在创建部署时自动生成参数表单。"
+            action={<Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传第一个离线包</Button>}
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={filteredPackages}
+            rowKey="id"
+            loading={loading}
+            size="middle"
+            pagination={{
+              current: page,
+              pageSize,
+              total: filteredPackages.length,
+              showSizeChanger: true,
+              showTotal: (count) => `共 ${count} 个离线包`,
+              onChange: (currentPage, currentPageSize) => {
+                setPage(currentPage);
+                setPageSize(currentPageSize);
+              },
+            }}
+          />
+        )}
+      </SectionCard>
+
+      <Drawer
+        title="上传 Nginx 离线包"
+        open={uploadVisible}
+        onClose={() => {
+          setUploadVisible(false);
           form.resetFields();
           setFileList([]);
         }}
-        onOk={() => form.submit()}
-        confirmLoading={uploading}
-        width={600}
+        width={520}
+        extra={<Button type="primary" loading={uploading} onClick={() => form.submit()}>提交上传</Button>}
       >
         <Form form={form} layout="vertical" onFinish={handleUpload}>
           <Form.Item label="版本号" name="version" rules={[{ required: true, message: '请输入版本号' }]}>
             <Input placeholder="例如: 1.28.0" />
           </Form.Item>
           <Form.Item label="显示名称" name="display_name">
-            <Input placeholder="例如: Nginx 1.28.0（可选）" />
+            <Input placeholder="例如: Nginx 1.28.0" />
           </Form.Item>
           <Form.Item label="描述" name="description">
-            <Input.TextArea rows={3} placeholder="离线包描述（可选）" />
+            <Input.TextArea rows={3} placeholder="例如：适用于 Rocky Linux 9.4 的离线安装包" />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="操作系统类型" name="os_type" rules={[{ required: true, message: '请选择操作系统类型' }]}>
-                <Select placeholder="请选择">
+                <Select placeholder="请选择系统">
                   <Option value="rocky">Rocky Linux</Option>
                   <Option value="centos">CentOS</Option>
                   <Option value="openEuler">OpenEuler</Option>
@@ -286,12 +270,12 @@ const Middleware: React.FC = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="操作系统版本" name="os_version" rules={[{ required: true, message: '请输入版本' }]}>
+              <Form.Item label="操作系统版本" name="os_version" rules={[{ required: true, message: '请输入版本号' }]}>
                 <Input placeholder="例如: 9.4" />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item label="离线包文件" required>
+          <Form.Item label="ZIP 离线包" required extra="平台会校验 metadata.json，并自动识别部署参数。">
             <Dragger
               fileList={fileList}
               beforeUpload={(file) => {
@@ -315,13 +299,13 @@ const Middleware: React.FC = () => {
               onRemove={() => setFileList([])}
               maxCount={1}
             >
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
-              <p className="ant-upload-hint">仅支持 ZIP 格式，最大 500MB</p>
+              <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+              <p className="ant-upload-text">点击或拖拽 ZIP 文件到这里</p>
+              <p className="ant-upload-hint">支持包含 metadata.json 的 Nginx 离线包，最大 500MB</p>
             </Dragger>
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
     </div>
   );
 };

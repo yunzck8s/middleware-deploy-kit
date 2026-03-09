@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DragOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NginxLocation } from '../../types';
 
 const { Option } = Select;
@@ -102,7 +102,6 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
               style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <DragOutlined style={{ color: 'var(--text-tertiary)', cursor: 'grab' }} />
                 <Tag color="blue" style={{ fontFamily: 'var(--font-mono)', margin: 0 }}>
                   {loc.path}
                 </Tag>

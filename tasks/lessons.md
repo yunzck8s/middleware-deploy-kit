@@ -22,6 +22,11 @@
 
 ## Mistakes to Avoid
 
+
+### Sectioned Forms
+- ❌ Don't rely on `form.validateFields()` without mounted fields when actions can be triggered from a preview-only section.
+- ✅ For multi-section Ant Design forms, read persisted values with `form.getFieldsValue(true)` and manually guard required fields before preview/save.
+
 ### Testing
 - ❌ Don't use `npm run test` in CI (starts watch mode)
 - ✅ Use `npx vitest --run` instead
@@ -37,3 +42,5 @@
 ## User Corrections
 
 <!-- Log any corrections received from users here -->
+
+- 2026-03-09: User found that refreshing Nginx config preview during creation failed because preview/save only validated mounted section fields. Fixed by collecting persisted form values and explicitly guarding required fields.

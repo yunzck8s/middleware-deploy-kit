@@ -2,9 +2,33 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Form, Input, Button, message } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import {
+  UserOutlined,
+  LockOutlined,
+  SafetyCertificateOutlined,
+  DeploymentUnitOutlined,
+  CloudServerOutlined,
+} from '@ant-design/icons';
 import { login } from '../api/auth';
 import { setCredentials } from '../store/authSlice';
+
+const benefits = [
+  {
+    icon: <DeploymentUnitOutlined />,
+    title: '离线部署工作流',
+    description: '围绕 Nginx 包、配置、证书和部署任务构建统一控制面板。',
+  },
+  {
+    icon: <CloudServerOutlined />,
+    title: '服务器联通感知',
+    description: '在执行前确认 SSH 连接、系统版本和目标节点状态。',
+  },
+  {
+    icon: <SafetyCertificateOutlined />,
+    title: '配置与证书联动',
+    description: '同时管理 TLS 证书、配置模板和部署日志，减少切换成本。',
+  },
+];
 
 const Login = () => {
   const [loading, setLoading] = useState(false);
@@ -26,168 +50,62 @@ const Login = () => {
   };
 
   return (
-    <div
-      className="grid-bg"
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100vh',
-        background: 'var(--bg-primary)',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Gradient orbs */}
-      <div
-        style={{
-          position: 'absolute',
-          width: 500,
-          height: 500,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%)',
-          top: '-10%',
-          right: '-5%',
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(139,92,246,0.12), transparent 70%)',
-          bottom: '-10%',
-          left: '-5%',
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* Login card */}
-      <div
-        style={{
-          width: 420,
-          padding: 40,
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 16,
-          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
-          position: 'relative',
-          zIndex: 1,
-          backdropFilter: 'blur(20px)',
-        }}
-      >
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 16,
-            }}
-          >
-            <span
-              style={{
-                color: '#fff',
-                fontFamily: 'var(--font-mono)',
-                fontWeight: 700,
-                fontSize: 24,
-              }}
-            >
-              M
-            </span>
-          </div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              margin: 0,
-              color: 'var(--text-primary)',
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            MDK Deploy
-          </h1>
-          <p
-            style={{
-              color: 'var(--text-secondary)',
-              marginTop: 6,
-              fontSize: 13,
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
-            Middleware Deploy Kit
+    <div className="login-shell">
+      <aside className="login-shell__aside">
+        <div className="login-hero">
+          <div className="login-hero__badge">Nginx 运维控制台</div>
+          <h1 className="login-hero__title">为离线环境而设计的 Nginx 运维控制台</h1>
+          <p className="login-hero__subtitle">
+            聚焦包分发、TLS 证书、配置编排与实时部署日志，把 Nginx 运维动作集中到一个工作区中。
           </p>
         </div>
 
-        <Form name="login" onFinish={onFinish} autoComplete="off" size="large">
-          <Form.Item
-            name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
-          >
-            <Input
-              prefix={<UserOutlined style={{ color: 'var(--text-tertiary)' }} />}
-              placeholder="用户名"
-              style={{
-                background: 'var(--bg-tertiary)',
-                borderColor: 'var(--border-color)',
-                height: 44,
-                borderRadius: 8,
-              }}
-            />
-          </Form.Item>
+        <div className="login-benefits">
+          {benefits.map((benefit) => (
+            <div key={benefit.title} className="login-benefit">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                <span className="metric-tile__icon" style={{ width: 36, height: 36 }}>{benefit.icon}</span>
+                <strong>{benefit.title}</strong>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>{benefit.description}</p>
+            </div>
+          ))}
+        </div>
+      </aside>
 
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password
-              prefix={<LockOutlined style={{ color: 'var(--text-tertiary)' }} />}
-              placeholder="密码"
-              style={{
-                background: 'var(--bg-tertiary)',
-                borderColor: 'var(--border-color)',
-                height: 44,
-                borderRadius: 8,
-              }}
-            />
-          </Form.Item>
+      <div className="login-shell__panel">
+        <div className="login-card">
+          <div className="login-card__brand">
+            <div className="login-card__logo">N</div>
+            <div>
+              <div className="login-card__title">Nginx 运维控制台</div>
+              <div className="login-card__subtitle">Nginx Operations Console</div>
+            </div>
+          </div>
 
-          <Form.Item style={{ marginBottom: 16 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              style={{
-                height: 44,
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 15,
-                background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                border: 'none',
-              }}
-            >
-              登录
-            </Button>
-          </Form.Item>
-        </Form>
+          <Form name="login" onFinish={onFinish} autoComplete="off" size="large" layout="vertical">
+            <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+              <Input
+                prefix={<UserOutlined style={{ color: 'var(--text-tertiary)' }} />}
+                placeholder="输入管理员用户名"
+              />
+            </Form.Item>
 
-        <div
-          style={{
-            textAlign: 'center',
-            color: 'var(--text-tertiary)',
-            fontSize: 12,
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          默认账号: admin / admin123
+            <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+              <Input.Password
+                prefix={<LockOutlined style={{ color: 'var(--text-tertiary)' }} />}
+                placeholder="输入登录密码"
+              />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 12 }}>
+              <Button type="primary" htmlType="submit" loading={loading} block>
+                进入控制台
+              </Button>
+            </Form.Item>
+          </Form>
+
+          <div className="login-card__hint">默认账号: admin / admin123</div>
         </div>
       </div>
     </div>

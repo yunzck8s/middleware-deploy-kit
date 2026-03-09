@@ -39,6 +39,10 @@ func Init(cfg *config.Config) error {
 		return fmt.Errorf("failed to init default data: %w", err)
 	}
 
+	if err := cleanupLegacyNonNginxData(); err != nil {
+		return fmt.Errorf("failed to cleanup legacy non-nginx data: %w", err)
+	}
+
 	return nil
 }
 

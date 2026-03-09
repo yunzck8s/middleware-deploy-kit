@@ -65,6 +65,29 @@ func TestDeploymentAPI_Create(t *testing.T) {
 	}
 	testDB.Create(nginxConfig)
 
+	nginxPackage := &models.MiddlewarePackage{
+		Name:      models.MiddlewareNameNginx,
+		Version:   "1.28.0",
+		FileName:  "nginx.zip",
+		FilePath:  "/tmp/nginx.zip",
+		FileSize:  128,
+		Status:    "active",
+		OSType:    "rocky",
+		OSVersion: "9.4",
+	}
+	redisPackage := &models.MiddlewarePackage{
+		Name:      "redis",
+		Version:   "6.2.20",
+		FileName:  "redis.zip",
+		FilePath:  "/tmp/redis.zip",
+		FileSize:  128,
+		Status:    "active",
+		OSType:    "rocky",
+		OSVersion: "9.4",
+	}
+	testDB.Create(nginxPackage)
+	testDB.Create(redisPackage)
+
 	cfg := &config.Config{}
 	deployAPI := NewDeploymentAPI(cfg)
 
@@ -128,6 +151,28 @@ func TestDeploymentAPI_Create(t *testing.T) {
 				"name":      "测试部署",
 				"type":      "invalid_type",
 				"server_id": server.ID,
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  true,
+		},
+		{
+			name: "成功创建 Nginx 离线包部署",
+			reqBody: map[string]interface{}{
+				"name":       "Nginx 包部署",
+				"type":       "package",
+				"server_id":  server.ID,
+				"package_id": nginxPackage.ID,
+			},
+			wantStatus: http.StatusOK,
+			wantError:  false,
+		},
+		{
+			name: "拒绝非 Nginx 离线包部署",
+			reqBody: map[string]interface{}{
+				"name":       "Redis 包部署",
+				"type":       "package",
+				"server_id":  server.ID,
+				"package_id": redisPackage.ID,
 			},
 			wantStatus: http.StatusBadRequest,
 			wantError:  true,

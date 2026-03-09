@@ -33,17 +33,23 @@ func NewPackageAPI(cfg *config.Config) *PackageAPI {
 
 // UploadRequest 上传请求
 type UploadRequest struct {
-	Name        string `form:"name" binding:"required"`        // nginx, redis, openssh
-	Version     string `form:"version" binding:"required"`     // 版本号
-	DisplayName string `form:"display_name"`                   // 显示名称
-	Description string `form:"description"`                    // 描述
-	OSType      string `form:"os_type" binding:"required"`     // rocky, centos, openEuler
-	OSVersion   string `form:"os_version" binding:"required"`  // 9.4, 7.9
+	Name        string `form:"name" binding:"required"`       // nginx
+	Version     string `form:"version" binding:"required"`    // 版本号
+	DisplayName string `form:"display_name"`                  // 显示名称
+	Description string `form:"description"`                   // 描述
+	OSType      string `form:"os_type" binding:"required"`    // rocky, centos, openEuler
+	OSVersion   string `form:"os_version" binding:"required"` // 9.4, 7.9
+}
+
+type packageIdentity struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
 }
 
 // Upload 上传离线包
 func (p *PackageAPI) Upload(c *gin.Context) {
-	// 获取上传的文件
 	file, err := c.FormFile("file")
 	if err != nil {
 		logger.Errorf("获取上传文件失败: %v", err)
@@ -51,15 +57,13 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		return
 	}
 
-	// 手动获取表单字段（multipart/form-data）
-	name := c.PostForm("name")
-	version := c.PostForm("version")
-	displayName := c.PostForm("display_name")
-	description := c.PostForm("description")
-	osType := c.PostForm("os_type")
-	osVersion := c.PostForm("os_version")
+	name := strings.TrimSpace(c.PostForm("name"))
+	version := strings.TrimSpace(c.PostForm("version"))
+	displayName := strings.TrimSpace(c.PostForm("display_name"))
+	description := strings.TrimSpace(c.PostForm("description"))
+	osType := strings.TrimSpace(c.PostForm("os_type"))
+	osVersion := strings.TrimSpace(c.PostForm("os_version"))
 
-	// 验证必填字段
 	if name == "" || version == "" || osType == "" || osVersion == "" {
 		response.BadRequest(c, "缺少必填字段: name, version, os_type, os_version")
 		return
@@ -74,34 +78,33 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		OSVersion:   osVersion,
 	}
 
-	// 验证文件类型（必须是 zip）
+	if req.Name != models.MiddlewareNameNginx {
+		response.BadRequest(c, "当前仅支持上传 Nginx 离线包")
+		return
+	}
+
 	if !strings.HasSuffix(strings.ToLower(file.Filename), ".zip") {
 		response.BadRequest(c, "只支持 ZIP 格式文件")
 		return
 	}
 
-	// 验证文件大小（最大 500MB）
-	maxSize := int64(500 * 1024 * 1024) // 500MB
+	maxSize := int64(500 * 1024 * 1024)
 	if file.Size > maxSize {
 		response.BadRequest(c, "文件大小超过限制（最大 500MB）")
 		return
 	}
 
-	// 创建存储目录
 	uploadDir := filepath.Join(p.cfg.Data.UploadDir, "packages")
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
 		logger.Errorf("创建上传目录失败: %v", err)
 		response.InternalServerError(c, "创建上传目录失败")
 		return
 	}
 
-	// 生成文件名：{name}-{version}-{os_type}-{os_version}-{timestamp}.zip
 	timestamp := time.Now().Unix()
-	filename := fmt.Sprintf("%s-%s-%s-%s-%d.zip",
-		req.Name, req.Version, req.OSType, req.OSVersion, timestamp)
+	filename := fmt.Sprintf("%s-%s-%s-%s-%d.zip", req.Name, req.Version, req.OSType, req.OSVersion, timestamp)
 	filePath := filepath.Join(uploadDir, filename)
 
-	// 打开上传的文件
 	src, err := file.Open()
 	if err != nil {
 		logger.Errorf("打开上传文件失败: %v", err)
@@ -110,35 +113,59 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// 创建目标文件
 	dst, err := os.Create(filePath)
 	if err != nil {
 		logger.Errorf("创建目标文件失败: %v", err)
 		response.InternalServerError(c, "创建目标文件失败")
 		return
 	}
-	defer dst.Close()
 
-	// 计算 SHA256 并保存文件
 	hash := sha256.New()
 	writer := io.MultiWriter(dst, hash)
 	if _, err := io.Copy(writer, src); err != nil {
+		dst.Close()
 		logger.Errorf("保存文件失败: %v", err)
-		os.Remove(filePath) // 清理失败的文件
+		os.Remove(filePath)
 		response.InternalServerError(c, "保存文件失败")
 		return
 	}
 
-	// 获取文件哈希
+	if err := dst.Close(); err != nil {
+		logger.Errorf("关闭上传文件失败: %v", err)
+		os.Remove(filePath)
+		response.InternalServerError(c, "保存文件失败")
+		return
+	}
+
+	identity, err := readPackageIdentity(filePath)
+	if err != nil {
+		os.Remove(filePath)
+		response.BadRequest(c, "离线包 metadata.json 校验失败: "+err.Error())
+		return
+	}
+
+	if identity.Name != models.MiddlewareNameNginx {
+		os.Remove(filePath)
+		response.BadRequest(c, "ZIP 包中的 metadata.json 必须声明为 nginx")
+		return
+	}
+	if identity.Version == "" {
+		os.Remove(filePath)
+		response.BadRequest(c, "ZIP 包中的 metadata.json 缺少 version")
+		return
+	}
+	if identity.Version != req.Version {
+		os.Remove(filePath)
+		response.BadRequest(c, "请求版本与 ZIP 包 metadata.json 中的 version 不一致")
+		return
+	}
+
 	fileHash := hex.EncodeToString(hash.Sum(nil))
 
-	// 检查是否已存在相同的包（相同名称、版本、OS）
 	var existingPkg models.MiddlewarePackage
 	result := db.DB.Where("name = ? AND version = ? AND os_type = ? AND os_version = ? AND status = 'active'",
 		req.Name, req.Version, req.OSType, req.OSVersion).First(&existingPkg)
-
 	if result.Error == nil {
-		// 已存在，删除新上传的文件
 		os.Remove(filePath)
 		response.ConflictWithData(c, "该离线包已存在", gin.H{
 			"existing_package": existingPkg,
@@ -146,7 +173,13 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		return
 	}
 
-	// 创建数据库记录
+	if req.DisplayName == "" {
+		req.DisplayName = strings.TrimSpace(identity.DisplayName)
+	}
+	if req.Description == "" {
+		req.Description = strings.TrimSpace(identity.Description)
+	}
+
 	pkg := &models.MiddlewarePackage{
 		Name:        req.Name,
 		Version:     req.Version,
@@ -161,14 +194,13 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		Status:      "active",
 	}
 
-	// 设置默认显示名称
 	if pkg.DisplayName == "" {
 		pkg.DisplayName = fmt.Sprintf("%s %s", strings.ToUpper(req.Name), req.Version)
 	}
 
 	if err := db.DB.Create(pkg).Error; err != nil {
 		logger.Errorf("创建离线包记录失败: %v", err)
-		os.Remove(filePath) // 清理文件
+		os.Remove(filePath)
 		response.InternalServerError(c, "创建离线包记录失败")
 		return
 	}
@@ -179,8 +211,8 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 
 // List 获取离线包列表
 func (p *PackageAPI) List(c *gin.Context) {
-	name := c.Query("name")       // 筛选中间件名称
-	osType := c.Query("os_type")  // 筛选操作系统类型
+	name := strings.TrimSpace(c.Query("name"))
+	osType := strings.TrimSpace(c.Query("os_type"))
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
@@ -190,22 +222,21 @@ func (p *PackageAPI) List(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
+	if name != "" && name != models.MiddlewareNameNginx {
+		response.BadRequest(c, "当前仅支持查询 Nginx 离线包")
+		return
+	}
 
 	var packages []models.MiddlewarePackage
-	query := db.DB.Where("status = ?", "active")
+	query := db.DB.Where("status = ? AND name = ?", "active", models.MiddlewareNameNginx)
 
-	if name != "" {
-		query = query.Where("name = ?", name)
-	}
 	if osType != "" {
 		query = query.Where("os_type = ?", osType)
 	}
 
-	// 获取总数
 	var total int64
 	query.Model(&models.MiddlewarePackage{}).Count(&total)
 
-	// 分页查询
 	offset := (page - 1) * pageSize
 	if err := query.Order("created_at DESC").
 		Limit(pageSize).
@@ -232,8 +263,8 @@ func (p *PackageAPI) Get(c *gin.Context) {
 		return
 	}
 
-	var pkg models.MiddlewarePackage
-	if err := db.DB.First(&pkg, id).Error; err != nil {
+	pkg, err := findActiveNginxPackage(uint(id))
+	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
 	}
@@ -249,24 +280,18 @@ func (p *PackageAPI) Delete(c *gin.Context) {
 		return
 	}
 
-	var pkg models.MiddlewarePackage
-	if err := db.DB.First(&pkg, id).Error; err != nil {
+	pkg, err := findActiveNginxPackage(uint(id))
+	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
 	}
 
-	// 软删除：更新状态为 deleted
 	pkg.Status = "deleted"
-	if err := db.DB.Save(&pkg).Error; err != nil {
+	if err := db.DB.Save(pkg).Error; err != nil {
 		logger.Errorf("删除离线包失败: %v", err)
 		response.InternalServerError(c, "删除失败")
 		return
 	}
-
-	// 可选：删除物理文件（如果需要立即释放磁盘空间）
-	// if err := os.Remove(pkg.FilePath); err != nil {
-	// 	logger.Warnf("删除文件失败: %v", err)
-	// }
 
 	logger.Infof("离线包已删除: %s-%s (ID: %d)", pkg.Name, pkg.Version, pkg.ID)
 	response.SuccessWithMessage(c, "删除成功", nil)
@@ -280,58 +305,88 @@ func (p *PackageAPI) GetMetadata(c *gin.Context) {
 		return
 	}
 
-	var pkg models.MiddlewarePackage
-	if err := db.DB.First(&pkg, id).Error; err != nil {
+	pkg, err := findActiveNginxPackage(uint(id))
+	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
 	}
 
-	// 检查文件是否存在
 	if _, err := os.Stat(pkg.FilePath); os.IsNotExist(err) {
 		response.NotFound(c, "离线包文件不存在")
 		return
 	}
 
-	// 打开 ZIP 文件
-	zipReader, err := zip.OpenReader(pkg.FilePath)
+	metadata, err := readPackageMetadata(pkg.FilePath)
 	if err != nil {
-		logger.Errorf("打开 ZIP 文件失败: %v", err)
-		response.InternalServerError(c, "打开离线包失败")
-		return
-	}
-	defer zipReader.Close()
-
-	// 查找 metadata.json 文件
-	var metadataFile *zip.File
-	for _, file := range zipReader.File {
-		if strings.HasSuffix(file.Name, "metadata.json") {
-			metadataFile = file
-			break
-		}
-	}
-
-	if metadataFile == nil {
-		response.NotFound(c, "离线包中未找到 metadata.json")
-		return
-	}
-
-	// 读取 metadata.json 内容
-	rc, err := metadataFile.Open()
-	if err != nil {
-		logger.Errorf("打开 metadata.json 失败: %v", err)
-		response.InternalServerError(c, "读取元数据失败")
-		return
-	}
-	defer rc.Close()
-
-	// 解析 JSON
-	var metadata models.PackageMetadata
-	decoder := json.NewDecoder(rc)
-	if err := decoder.Decode(&metadata); err != nil {
-		logger.Errorf("解析 metadata.json 失败: %v", err)
+		logger.Errorf("读取离线包元数据失败: %v", err)
 		response.InternalServerError(c, "解析元数据失败")
 		return
 	}
 
 	response.Success(c, metadata)
+}
+
+func findActiveNginxPackage(id uint) (*models.MiddlewarePackage, error) {
+	var pkg models.MiddlewarePackage
+	if err := db.DB.Where("id = ? AND name = ? AND status = ?", id, models.MiddlewareNameNginx, "active").First(&pkg).Error; err != nil {
+		return nil, err
+	}
+	return &pkg, nil
+}
+
+func readPackageMetadata(filePath string) (*models.PackageMetadata, error) {
+	metadataJSON, err := readPackageMetadataJSON(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata models.PackageMetadata
+	if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+		return nil, err
+	}
+
+	return &metadata, nil
+}
+
+func readPackageIdentity(filePath string) (*packageIdentity, error) {
+	metadataJSON, err := readPackageMetadataJSON(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var identity packageIdentity
+	if err := json.Unmarshal(metadataJSON, &identity); err != nil {
+		return nil, err
+	}
+
+	return &identity, nil
+}
+
+func readPackageMetadataJSON(filePath string) ([]byte, error) {
+	zipReader, err := zip.OpenReader(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer zipReader.Close()
+
+	for _, file := range zipReader.File {
+		if !strings.HasSuffix(file.Name, "metadata.json") {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			return nil, err
+		}
+
+		metadataJSON, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		return metadataJSON, nil
+	}
+
+	return nil, fmt.Errorf("离线包中未找到 metadata.json")
 }

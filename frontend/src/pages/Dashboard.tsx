@@ -1,24 +1,27 @@
-import { Row, Col, Card, List, Tag, Button, Skeleton } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Button, List, Skeleton } from 'antd';
 import {
-  AppstoreOutlined,
   CloudServerOutlined,
+  InboxOutlined,
   RocketOutlined,
-  CheckCircleOutlined,
   SafetyCertificateOutlined,
-  UploadOutlined,
   SettingOutlined,
   ReloadOutlined,
   ArrowRightOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
-import dayjs from 'dayjs';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import LineChart from '../components/charts/LineChart';
-import PieChart from '../components/charts/PieChart';
-import { getStatusColor, getRecentDayLabels } from '../utils/chartUtils';
-import type { Deployment } from '../types';
+import DeploymentStatusOverview from '../components/charts/DeploymentStatusOverview';
+import PageHeader from '../components/common/PageHeader';
+import MetricTile from '../components/common/MetricTile';
+import SectionCard from '../components/common/SectionCard';
+import ActionGroup from '../components/common/ActionGroup';
+import StatusBadge, { getStatusMeta } from '../components/common/StatusBadge';
+import EmptyState from '../components/common/EmptyState';
+import { getRecentDayLabels } from '../utils/chartUtils';
+import { formatRelativeTime } from '../utils/formatters';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -26,317 +29,215 @@ const Dashboard = () => {
 
   useAutoRefresh(fetchData, { interval: 30000, enabled: true });
 
-  const getDeploymentTypeName = (type: string) => {
-    const typeMap: Record<string, string> = {
-      nginx_config: 'Nginx 配置',
-      package: '离线包',
-      certificate: '证书',
-    };
-    return typeMap[type] || type;
-  };
-
-  const getStatusTag = (status: string): string => {
-    const statusMap: Record<string, string> = {
-      pending: '待执行',
-      running: '进行中',
-      success: '成功',
-      failed: '失败',
-      cancelled: '已取消',
-    };
-    return statusMap[status] || status;
-  };
-
   const quickActions = [
-    {
-      title: '添加服务器',
-      icon: <CloudServerOutlined style={{ fontSize: 24, color: '#6366F1' }} />,
-      description: '管理远程服务器',
-      path: '/servers',
-    },
-    {
-      title: '上传离线包',
-      icon: <UploadOutlined style={{ fontSize: 24, color: '#10B981' }} />,
-      description: '上传中间件安装包',
-      path: '/middleware/nginx/packages',
-    },
-    {
-      title: '创建部署',
-      icon: <RocketOutlined style={{ fontSize: 24, color: '#F59E0B' }} />,
-      description: '新建部署任务',
-      path: '/middleware/nginx/deployments',
-    },
-    {
-      title: 'Nginx 配置',
-      icon: <SettingOutlined style={{ fontSize: 24, color: '#8B5CF6' }} />,
-      description: '可视化配置管理',
-      path: '/middleware/nginx/configs',
-    },
+    { label: '上传离线包', icon: <InboxOutlined />, path: '/middleware/nginx/packages' },
+    { label: '管理证书', icon: <SafetyCertificateOutlined />, path: '/middleware/nginx/certificates' },
+    { label: '编辑配置', icon: <SettingOutlined />, path: '/middleware/nginx/configs' },
+    { label: '发起部署', icon: <RocketOutlined />, path: '/middleware/nginx/deployments' },
   ];
 
+  const chartDates = getRecentDayLabels(7);
+
   return (
-    <div>
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>运维概览</h1>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-            实时监控平台状态
-          </span>
-        </div>
-        <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
-          刷新
-        </Button>
+    <div className="page-stack dashboard-page">
+      <PageHeader
+        eyebrow="Nginx 控制中心"
+        title="概览与实时态势"
+        subtitle="聚合节点状态、可用资产、部署趋势和证书风险，让常用操作在一个屏内完成。"
+        actions={(
+          <ActionGroup>
+            <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
+              刷新数据
+            </Button>
+            <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>
+              新建部署
+            </Button>
+          </ActionGroup>
+        )}
+      />
+
+      <div className="metric-grid">
+        <MetricTile
+          label="在线服务器"
+          value={`${stats?.serversOnline || 0}/${stats?.serversTotal || 0}`}
+          hint="已检测到在线节点占比"
+          icon={<CloudServerOutlined />}
+          tone="success"
+          loading={loading}
+          onClick={() => navigate('/servers')}
+        />
+        <MetricTile
+          label="可用离线包"
+          value={stats?.packagesCount || 0}
+          hint="当前可直接部署的 Nginx 包"
+          icon={<InboxOutlined />}
+          tone="info"
+          loading={loading}
+          onClick={() => navigate('/middleware/nginx/packages')}
+        />
+        <MetricTile
+          label="有效证书"
+          value={stats?.certificatesTotal || 0}
+          hint={`${stats?.certificatesExpiringSoon || 0} 个将在 30 天内到期`}
+          icon={<SafetyCertificateOutlined />}
+          tone={stats?.certificatesExpiringSoon ? 'warning' : 'success'}
+          loading={loading}
+          onClick={() => navigate('/middleware/nginx/certificates')}
+        />
+        <MetricTile
+          label="配置资源"
+          value={stats?.configsTotal || 0}
+          hint="已保存的 Nginx 配置模板数量"
+          icon={<SettingOutlined />}
+          tone="default"
+          loading={loading}
+          onClick={() => navigate('/middleware/nginx/configs')}
+        />
+        <MetricTile
+          label="运行中部署"
+          value={stats?.deploymentsRunning || 0}
+          hint={`${stats?.deploymentsTotal || 0} 个任务已记录`}
+          icon={<RocketOutlined />}
+          tone={stats?.deploymentsRunning ? 'warning' : 'default'}
+          loading={loading}
+          onClick={() => navigate('/middleware/nginx/deployments')}
+        />
+        <MetricTile
+          label="近期成功率"
+          value={`${stats?.successRate || 0}%`}
+          hint="按当前任务历史自动计算"
+          icon={<ArrowRightOutlined />}
+          tone={(stats?.successRate || 0) >= 90 ? 'success' : (stats?.successRate || 0) >= 70 ? 'warning' : 'danger'}
+          loading={loading}
+        />
       </div>
 
-      {/* 5 KPI Cards */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={4} xl={4}>
-          <div className="kpi-card" onClick={() => navigate('/servers')}>
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 1 }} />
-            ) : (
-              <>
-                <div className="kpi-label">
-                  <CloudServerOutlined style={{ marginRight: 6 }} />
-                  服务器
-                </div>
-                <div className="kpi-value">
-                  {stats?.serversOnline || 0}
-                  <span style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 400 }}>
-                    /{stats?.serversTotal || 0}
-                  </span>
-                </div>
-                <div className="kpi-trend" style={{ color: 'var(--color-success)' }}>
-                  <span className="status-dot status-dot--online" style={{ marginRight: 6 }} />
-                  在线
-                </div>
-              </>
-            )}
-          </div>
-        </Col>
-        <Col xs={24} sm={12} lg={5} xl={5}>
-          <div className="kpi-card" onClick={() => navigate('/middleware/nginx/packages')}>
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 1 }} />
-            ) : (
-              <>
-                <div className="kpi-label">
-                  <AppstoreOutlined style={{ marginRight: 6 }} />
-                  离线包
-                </div>
-                <div className="kpi-value">{stats?.packagesCount || 0}</div>
-                <div className="kpi-trend" style={{ color: 'var(--text-secondary)' }}>
-                  可用中间件包
-                </div>
-              </>
-            )}
-          </div>
-        </Col>
-        <Col xs={24} sm={12} lg={5} xl={5}>
-          <div className="kpi-card" onClick={() => navigate('/middleware/nginx/deployments')}>
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 1 }} />
-            ) : (
-              <>
-                <div className="kpi-label">
-                  <RocketOutlined style={{ marginRight: 6 }} />
-                  部署任务
-                </div>
-                <div className="kpi-value">{stats?.deploymentsTotal || 0}</div>
-                <div className="kpi-trend" style={{ color: 'var(--color-warning)' }}>
-                  {stats?.deploymentsRunning || 0} 运行中
-                </div>
-              </>
-            )}
-          </div>
-        </Col>
-        <Col xs={24} sm={12} lg={5} xl={5}>
-          <div className="kpi-card">
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 1 }} />
-            ) : (
-              <>
-                <div className="kpi-label">
-                  <CheckCircleOutlined style={{ marginRight: 6 }} />
-                  成功率
-                </div>
-                <div className="kpi-value" style={{ color: 'var(--color-success)' }}>
-                  {stats?.successRate || 0}%
-                </div>
-                <div className="kpi-trend" style={{ color: 'var(--color-success)' }}>
-                  部署成功占比
-                </div>
-              </>
-            )}
-          </div>
-        </Col>
-        <Col xs={24} sm={12} lg={5} xl={5}>
-          <div className="kpi-card" onClick={() => navigate('/middleware/nginx/certificates')}>
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 1 }} />
-            ) : (
-              <>
-                <div className="kpi-label">
-                  <SafetyCertificateOutlined style={{ marginRight: 6 }} />
-                  证书状态
-                </div>
-                <div className="kpi-value">{stats?.certificatesTotal || 0}</div>
-                <div
-                  className="kpi-trend"
-                  style={{
-                    color: (stats?.certificatesExpiringSoon || 0) > 0 ? 'var(--color-warning)' : 'var(--color-success)',
-                  }}
-                >
-                  {(stats?.certificatesExpiringSoon || 0) > 0 ? (
-                    <>
-                      <WarningOutlined style={{ marginRight: 4 }} />
-                      {stats?.certificatesExpiringSoon} 即将到期
-                    </>
-                  ) : (
-                    '全部正常'
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </Col>
-      </Row>
-
-      {/* Charts */}
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={14}>
-          <Card
-            title="7日部署趋势"
-            styles={{ body: { padding: 16 } }}
-            style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+      <div className="page-grid-2 dashboard-page__body">
+        <div className="page-stack">
+          <SectionCard
+            title="部署趋势"
+            subtitle="过去 7 天内成功与失败任务的变化情况。"
+            extra={<StatusBadge status={(stats?.deploymentsRunning || 0) > 0 ? 'running' : 'success'} label={(stats?.deploymentsRunning || 0) > 0 ? '正在追踪中' : '状态稳定'} compact />}
           >
             {loading ? (
-              <Skeleton active paragraph={{ rows: 8 }} />
+              <div style={{ padding: 24 }}><Skeleton active paragraph={{ rows: 8 }} /></div>
             ) : (
-              <LineChart
-                data={[
-                  { name: '成功', data: stats?.trendData.success || [], color: '#10B981' },
-                  { name: '失败', data: stats?.trendData.failed || [], color: '#EF4444' },
-                ]}
-                xAxisData={getRecentDayLabels(7)}
-                height={300}
-                smooth
-                showArea
-              />
+              <div style={{ padding: 16 }}>
+                <LineChart
+                  data={[
+                    { name: '成功', data: stats?.trendData.success || [], color: '#22C55E' },
+                    { name: '失败', data: stats?.trendData.failed || [], color: '#EF4444' },
+                  ]}
+                  xAxisData={chartDates}
+                  height={320}
+                />
+              </div>
             )}
-          </Card>
-        </Col>
-        <Col xs={24} lg={10}>
-          <Card
-            title="部署状态分布"
-            styles={{ body: { padding: 16 } }}
-            style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-          >
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 8 }} />
-            ) : (
-              <PieChart
-                data={
-                  stats?.statusData.map((item) => ({
-                    name: item.name,
-                    value: item.value,
-                    color: getStatusColor(item.status),
-                  })) || []
-                }
-                height={300}
-                showPercentage
-              />
-            )}
-          </Card>
-        </Col>
-      </Row>
+          </SectionCard>
 
-      {/* Recent activity + Quick actions */}
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={14}>
-          <Card
+          <SectionCard
             title="最近部署"
-            extra={
-              <Button
-                type="link"
-                icon={<ArrowRightOutlined />}
-                onClick={() => navigate('/middleware/nginx/deployments')}
-                style={{ color: 'var(--color-primary)' }}
-              >
-                查看全部
-              </Button>
-            }
-            style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+            subtitle="最近创建的任务，按时间倒序排列。"
+            extra={<Button type="link" icon={<ArrowRightOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>查看全部</Button>}
           >
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 5 }} />
-            ) : (
-              <List
-                size="small"
-                dataSource={stats?.recentDeployments?.slice(0, 6) || []}
-                renderItem={(item: Deployment) => (
-                  <List.Item style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
-                      <span
-                        className={`status-dot status-dot--${item.status === 'success' ? 'online' : item.status === 'failed' ? 'offline' : 'unknown'}`}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, fontSize: 13 }}>{item.name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                          {getDeploymentTypeName(item.type)} → {item.server?.name || '-'}
+            <div style={{ padding: 16 }}>
+              {loading ? (
+                <Skeleton active paragraph={{ rows: 6 }} />
+              ) : !stats?.recentDeployments?.length ? (
+                <EmptyState title="还没有部署记录" description="创建一个新的 Nginx 离线包或证书部署任务后，这里会显示最近活动。" />
+              ) : (
+                <List
+                  itemLayout="vertical"
+                  dataSource={stats.recentDeployments}
+                  renderItem={(item) => {
+                    const statusMeta = getStatusMeta(item.status);
+                    return (
+                      <List.Item
+                        style={{
+                          padding: '16px 0',
+                          borderBottomColor: 'var(--border-color)',
+                        }}
+                        actions={[
+                          <Button key="view" type="link" onClick={() => navigate('/middleware/nginx/deployments')}>
+                            查看任务
+                          </Button>,
+                        ]}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 16 }}>{item.name}</div>
+                            <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>{item.description || '未填写任务描述'}</div>
+                            <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                              <StatusBadge status={item.status} label={statusMeta.label} compact />
+                              <span className="summary-card__hint">{item.server?.name || '未关联服务器'}</span>
+                              <span className="summary-card__hint">{formatRelativeTime(item.created_at)}</span>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div className="summary-card__label">任务类型</div>
+                            <div className="summary-card__value" style={{ fontSize: 16 }}>{item.type}</div>
+                          </div>
                         </div>
-                      </div>
-                      <Tag color={getStatusColor(item.status)} style={{ margin: 0 }}>
-                        {getStatusTag(item.status)}
-                      </Tag>
-                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                        {dayjs(item.created_at).format('MM-DD HH:mm')}
-                      </span>
-                    </div>
-                  </List.Item>
-                )}
+                      </List.Item>
+                    );
+                  }}
+                />
+              )}
+            </div>
+          </SectionCard>
+        </div>
+
+        <div className="page-stack">
+          <SectionCard title="部署状态分布" subtitle="用运维条形概览查看任务结构、占比和风险方向。">
+            <div style={{ padding: 16 }}>
+              <DeploymentStatusOverview
+                data={(stats?.statusData || []).map((item) => ({
+                  name: item.name,
+                  value: item.value,
+                  status: item.status,
+                }))}
+                total={stats?.deploymentsTotal || 0}
               />
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} lg={10}>
-          <Card
-            title="快捷操作"
-            style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
-          >
-            <Row gutter={[12, 12]}>
-              {quickActions.map((action, index) => (
-                <Col key={index} xs={12}>
-                  <div
-                    className="mdk-card"
-                    onClick={() => navigate(action.path)}
-                    style={{
-                      padding: 16,
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div style={{ marginBottom: 8 }}>{action.icon}</div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--text-primary)' }}>
-                      {action.title}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                      {action.description}
-                    </div>
-                  </div>
-                </Col>
-              ))}
-            </Row>
-          </Card>
-        </Col>
-      </Row>
+            </div>
+          </SectionCard>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-xl)' }}>
+        <SectionCard title="证书风险提醒" subtitle="优先关注即将到期和需要替换的 TLS 资产。">
+          <div style={{ padding: 16 }}>
+            <div className="summary-card" style={{ borderColor: 'rgba(245, 158, 11, 0.2)' }}>
+              <div className="summary-card__label">30 天内到期证书</div>
+              <div className="summary-card__value" style={{ color: 'var(--color-warning)' }}>{stats?.certificatesExpiringSoon || 0}</div>
+              <div className="summary-card__hint">
+                {(stats?.certificatesExpiringSoon || 0) > 0
+                  ? '建议优先检查域名映射和证书替换计划。'
+                  : '当前没有紧急证书到期风险。'}
+              </div>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-secondary)' }}>
+              <WarningOutlined style={{ color: 'var(--color-warning)' }} />
+              到期风险依据当前证书有效期自动计算。
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="快捷入口" subtitle="以最短路径进入 Nginx 关键工作流。">
+          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {quickActions.map((action) => (
+              <Button
+                key={action.path}
+                icon={action.icon}
+                size="large"
+                block
+                onClick={() => navigate(action.path)}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
     </div>
   );
 };

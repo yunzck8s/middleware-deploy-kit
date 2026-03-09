@@ -62,3 +62,10 @@ beforeEach(() => {
     originalError.call(console, ...args);
   };
 });
+
+// Mock ResizeObserver
+(globalThis as any).ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

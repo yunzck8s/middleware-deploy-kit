@@ -424,7 +424,7 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 // generateNginxConfig 生成 Nginx 配置文件内容
 func generateNginxConfig(cfg *models.NginxConfig) (string, error) {
 	tmpl := `# Nginx 配置文件
-# 由中间件部署平台自动生成
+# 由 Nginx 部署平台自动生成
 # 配置名称: {{.Name}}
 
 user nobody;

@@ -27,11 +27,10 @@ describe('Login Component', () => {
   it('renders login form correctly', () => {
     renderWithProviders(<Login />);
 
-    expect(screen.getByText('MDK Deploy')).toBeInTheDocument();
-    expect(screen.getByText('Middleware Deploy Kit')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('用户名')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('密码')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /登.*录/ })).toBeInTheDocument();
+    expect(screen.getAllByText('Nginx 运维控制台').length).toBeGreaterThan(0);
+    expect(screen.getByPlaceholderText('输入管理员用户名')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('输入登录密码')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '进入控制台' })).toBeInTheDocument();
     expect(screen.getByText('默认账号: admin / admin123')).toBeInTheDocument();
   });
 
@@ -39,7 +38,7 @@ describe('Login Component', () => {
     const user = userEvent.setup();
     renderWithProviders(<Login />);
 
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
     await user.click(submitButton);
 
     await waitFor(() => {
@@ -65,9 +64,9 @@ describe('Login Component', () => {
     const { store } = renderWithProviders(<Login />);
 
     // Fill in the form
-    const usernameInput = screen.getByPlaceholderText('用户名');
-    const passwordInput = screen.getByPlaceholderText('密码');
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const usernameInput = screen.getByPlaceholderText('输入管理员用户名');
+    const passwordInput = screen.getByPlaceholderText('输入登录密码');
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
 
     await user.type(usernameInput, 'admin');
     await user.type(passwordInput, 'admin123');
@@ -100,9 +99,9 @@ describe('Login Component', () => {
 
     renderWithProviders(<Login />);
 
-    const usernameInput = screen.getByPlaceholderText('用户名');
-    const passwordInput = screen.getByPlaceholderText('密码');
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const usernameInput = screen.getByPlaceholderText('输入管理员用户名');
+    const passwordInput = screen.getByPlaceholderText('输入登录密码');
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
 
     await user.type(usernameInput, 'wrong');
     await user.type(passwordInput, 'wrong');
@@ -129,9 +128,9 @@ describe('Login Component', () => {
 
     renderWithProviders(<Login />);
 
-    const usernameInput = screen.getByPlaceholderText('用户名');
-    const passwordInput = screen.getByPlaceholderText('密码');
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const usernameInput = screen.getByPlaceholderText('输入管理员用户名');
+    const passwordInput = screen.getByPlaceholderText('输入登录密码');
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
 
     await user.type(usernameInput, 'admin');
     await user.type(passwordInput, 'admin123');
@@ -158,8 +157,8 @@ describe('Login Component', () => {
     const user = userEvent.setup();
     renderWithProviders(<Login />);
 
-    const passwordInput = screen.getByPlaceholderText('密码');
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const passwordInput = screen.getByPlaceholderText('输入登录密码');
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
 
     await user.type(passwordInput, 'password123');
     await user.click(submitButton);
@@ -175,8 +174,8 @@ describe('Login Component', () => {
     const user = userEvent.setup();
     renderWithProviders(<Login />);
 
-    const usernameInput = screen.getByPlaceholderText('用户名');
-    const submitButton = screen.getByRole('button', { name: /登.*录/ });
+    const usernameInput = screen.getByPlaceholderText('输入管理员用户名');
+    const submitButton = screen.getByRole('button', { name: '进入控制台' });
 
     await user.type(usernameInput, 'admin');
     await user.click(submitButton);

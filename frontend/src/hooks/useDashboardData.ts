@@ -4,6 +4,7 @@ import { getPackageList } from '../api/package';
 import { getServerList } from '../api/server';
 import { getDeploymentList } from '../api/deployment';
 import { getCertificateList } from '../api/certificate';
+import { getNginxConfigList } from '../api/nginx';
 import type { Deployment, DeploymentStatus } from '../types';
 import { formatDate, getRecentDays } from '../utils/chartUtils';
 
@@ -14,11 +15,9 @@ export interface DashboardStats {
   deploymentsTotal: number;
   deploymentsRunning: number;
   successRate: number;
-
-  // Certificate stats
   certificatesTotal: number;
-  certificatesExpiringSoon: number; // within 30 days
-
+  certificatesExpiringSoon: number;
+  configsTotal: number;
   trendData: {
     dates: string[];
     success: number[];
@@ -29,7 +28,6 @@ export interface DashboardStats {
     value: number;
     status: DeploymentStatus;
   }[];
-
   recentDeployments: Deployment[];
 }
 
@@ -41,31 +39,31 @@ export const useDashboardData = () => {
     try {
       setLoading(true);
 
-      const [packagesRes, serversRes, deploymentsRes, certsRes] = await Promise.all([
-        getPackageList({ page: 1, page_size: 1000 }),
+      const [packagesRes, serversRes, deploymentsRes, certsRes, configsRes] = await Promise.all([
+        getPackageList({ name: 'nginx', page: 1, page_size: 1000 }),
         getServerList({ page: 1, page_size: 1000 }),
         getDeploymentList({ page: 1, page_size: 1000 }),
         getCertificateList({ page: 1, page_size: 1000 }),
+        getNginxConfigList({ page: 1, page_size: 1000 }),
       ]);
 
-      const packagesCount = packagesRes.packages?.filter((p) => p.status === 'active').length || 0;
-      const serversOnline = serversRes.servers?.filter((s) => s.status === 'online').length || 0;
+      const packagesCount = packagesRes.packages?.filter((pkg) => pkg.status === 'active').length || 0;
+      const serversOnline = serversRes.servers?.filter((server) => server.status === 'online').length || 0;
       const serversTotal = serversRes.total || 0;
 
       const deployments = deploymentsRes.deployments || [];
       const deploymentsTotal = deployments.length;
-      const deploymentsRunning = deployments.filter((d) => d.status === 'running').length;
-      const successCount = deployments.filter((d) => d.status === 'success').length;
+      const deploymentsRunning = deployments.filter((deployment) => deployment.status === 'running').length;
+      const successCount = deployments.filter((deployment) => deployment.status === 'success').length;
       const successRate = deploymentsTotal > 0 ? Math.round((successCount / deploymentsTotal) * 1000) / 10 : 0;
 
-      // Certificate stats
-      const certs = certsRes.certificates || [];
-      const certificatesTotal = certs.length;
+      const certificates = certsRes.certificates || [];
+      const certificatesTotal = certificates.filter((certificate) => certificate.status !== 'expired').length;
       const now = new Date();
       const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      const certificatesExpiringSoon = certs.filter((c) => {
-        if (c.status === 'expired') return false;
-        const expiry = new Date(c.valid_until);
+      const certificatesExpiringSoon = certificates.filter((certificate) => {
+        if (certificate.status === 'expired') return false;
+        const expiry = new Date(certificate.valid_until);
         return expiry <= thirtyDaysLater && expiry > now;
       }).length;
 
@@ -73,10 +71,10 @@ export const useDashboardData = () => {
       const trendData = {
         dates: recentDays,
         success: recentDays.map((date) =>
-          deployments.filter((d) => formatDate(d.created_at) === date && d.status === 'success').length
+          deployments.filter((deployment) => formatDate(deployment.created_at) === date && deployment.status === 'success').length,
         ),
         failed: recentDays.map((date) =>
-          deployments.filter((d) => formatDate(d.created_at) === date && d.status === 'failed').length
+          deployments.filter((deployment) => formatDate(deployment.created_at) === date && deployment.status === 'failed').length,
         ),
       };
 
@@ -87,8 +85,8 @@ export const useDashboardData = () => {
         failed: 0,
         cancelled: 0,
       };
-      deployments.forEach((d) => {
-        statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
+      deployments.forEach((deployment) => {
+        statusCounts[deployment.status] = (statusCounts[deployment.status] || 0) + 1;
       });
 
       const statusData = (Object.keys(statusCounts) as DeploymentStatus[]).map((status) => ({
@@ -98,8 +96,9 @@ export const useDashboardData = () => {
       }));
 
       const recentDeployments = deployments
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10);
+        .slice()
+        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
+        .slice(0, 8);
 
       setStats({
         packagesCount,
@@ -110,6 +109,7 @@ export const useDashboardData = () => {
         successRate,
         certificatesTotal,
         certificatesExpiringSoon,
+        configsTotal: configsRes.total || 0,
         trendData,
         statusData,
         recentDeployments,

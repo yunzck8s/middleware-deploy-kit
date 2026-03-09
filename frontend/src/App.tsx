@@ -43,13 +43,15 @@ function App() {
 
   if (isValidating) {
     return (
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100vh',
-        background: 'var(--bg-primary)',
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+          background: 'var(--bg-primary)',
+        }}
+      >
         <Spin size="large" />
       </div>
     );
@@ -61,50 +63,74 @@ function App() {
       theme={{
         algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
-          colorPrimary: isDark ? '#6366F1' : '#4F46E5',
-          colorSuccess: '#10B981',
+          colorPrimary: isDark ? '#22C55E' : '#16A34A',
+          colorSuccess: '#22C55E',
           colorWarning: '#F59E0B',
           colorError: '#EF4444',
-          colorInfo: isDark ? '#6366F1' : '#4F46E5',
-          borderRadius: 8,
+          colorInfo: isDark ? '#38BDF8' : '#0284C7',
+          borderRadius: 12,
+          borderRadiusLG: 16,
           fontSize: 14,
           fontFamily: "'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          colorBgContainer: isDark ? '#1E293B' : '#FFFFFF',
-          colorBgElevated: isDark ? '#1E293B' : '#FFFFFF',
-          colorBgLayout: isDark ? '#0F172A' : '#F8FAFC',
-          colorBorder: isDark ? '#334155' : '#E2E8F0',
-          colorBorderSecondary: isDark ? '#1E293B' : '#F1F5F9',
-          colorText: isDark ? '#F1F5F9' : '#0F172A',
-          colorTextSecondary: isDark ? '#94A3B8' : '#64748B',
-          colorTextTertiary: isDark ? '#64748B' : '#94A3B8',
+          colorBgContainer: isDark ? '#0F172A' : '#FFFFFF',
+          colorBgElevated: isDark ? '#0F172A' : '#FFFFFF',
+          colorBgLayout: isDark ? '#020617' : '#F8FAFC',
+          colorBorder: isDark ? 'rgba(148,163,184,0.16)' : 'rgba(148,163,184,0.22)',
+          colorBorderSecondary: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.16)',
+          colorText: isDark ? '#F8FAFC' : '#0F172A',
+          colorTextSecondary: isDark ? '#CBD5E1' : '#334155',
+          colorTextTertiary: '#64748B',
+          boxShadowSecondary: isDark ? '0 18px 50px rgba(2, 6, 23, 0.28)' : '0 18px 50px rgba(15, 23, 42, 0.12)',
         },
         components: {
           Card: {
-            borderRadiusLG: 8,
+            borderRadiusLG: 16,
             paddingLG: 24,
           },
           Button: {
-            borderRadius: 6,
+            borderRadius: 12,
+            controlHeight: 44,
+            paddingInline: 16,
+            fontWeight: 600,
           },
           Table: {
-            borderRadius: 8,
+            borderRadius: 16,
+            headerBg: 'transparent',
           },
           Menu: {
             darkItemBg: 'transparent',
             darkSubMenuItemBg: 'transparent',
-            darkItemSelectedBg: 'rgba(99, 102, 241, 0.15)',
-            darkItemColor: '#94A3B8',
-            darkItemSelectedColor: '#6366F1',
-            darkItemHoverColor: '#F1F5F9',
-            darkItemHoverBg: 'rgba(99, 102, 241, 0.08)',
+            darkItemSelectedBg: 'rgba(34, 197, 94, 0.16)',
+            darkItemColor: '#CBD5E1',
+            darkItemSelectedColor: '#F8FAFC',
+            darkItemHoverColor: '#F8FAFC',
+            darkItemHoverBg: 'rgba(56, 189, 248, 0.1)',
+            itemBg: 'transparent',
+            subMenuItemBg: 'transparent',
+            itemSelectedBg: 'rgba(22, 163, 74, 0.10)',
+            itemColor: '#334155',
+            itemSelectedColor: '#15803d',
+            itemHoverColor: '#0f172a',
+            itemHoverBg: 'rgba(148, 163, 184, 0.08)',
+            itemBorderRadius: 12,
           },
           Layout: {
-            siderBg: isDark ? '#0B1120' : '#FFFFFF',
-            headerBg: isDark ? '#0F172A' : '#FFFFFF',
-            bodyBg: isDark ? '#0F172A' : '#F8FAFC',
+            siderBg: isDark ? '#020617' : '#FFFFFF',
+            headerBg: isDark ? 'rgba(2,6,23,0.72)' : 'rgba(248,250,252,0.84)',
+            bodyBg: isDark ? '#020617' : '#F8FAFC',
           },
           Input: {
-            activeBorderColor: isDark ? '#6366F1' : '#4F46E5',
+            activeBorderColor: isDark ? '#22C55E' : '#16A34A',
+            hoverBorderColor: isDark ? '#4ADE80' : '#22C55E',
+          },
+          Select: {
+            optionSelectedBg: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(22, 163, 74, 0.08)',
+          },
+          Drawer: {
+            colorBgElevated: isDark ? '#0F172A' : '#FFFFFF',
+          },
+          Modal: {
+            colorBgElevated: isDark ? '#0F172A' : '#FFFFFF',
           },
         },
       }}
@@ -126,10 +152,8 @@ function App() {
             <Route path="middleware/nginx/certificates" element={<Certificates />} />
             <Route path="middleware/nginx/configs" element={<NginxConfig />} />
             <Route path="middleware/nginx/deployments" element={<Deployments />} />
-            <Route path="middleware/redis/packages" element={<Middleware />} />
-            <Route path="middleware/redis/deployments" element={<Deployments />} />
-            <Route path="middleware/openssh/packages" element={<Middleware />} />
-            <Route path="middleware/openssh/deployments" element={<Deployments />} />
+            <Route path="middleware/redis/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
+            <Route path="middleware/openssh/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

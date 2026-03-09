@@ -28,10 +28,10 @@ export interface PaginationResponse<T> {
   page_size: number;
 }
 
-// 中间件离线包
+// Nginx 离线包
 export interface MiddlewarePackage {
   id: number;
-  name: string;                    // nginx, redis, openssh
+  name: string;                    // nginx
   version: string;                 // 版本号
   display_name: string;            // 显示名称
   description: string;             // 描述

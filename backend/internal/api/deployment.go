@@ -143,8 +143,8 @@ func (a *DeploymentAPI) Create(c *gin.Context) {
 			return
 		}
 		var pkg models.MiddlewarePackage
-		if err := db.DB.First(&pkg, *req.PackageID).Error; err != nil {
-			response.Error(c, http.StatusBadRequest, "离线包不存在")
+		if err := db.DB.Where("id = ? AND name = ? AND status = ?", *req.PackageID, models.MiddlewareNameNginx, "active").First(&pkg).Error; err != nil {
+			response.Error(c, http.StatusBadRequest, "请选择有效的 Nginx 离线包")
 			return
 		}
 		deployment.PackageID = req.PackageID
@@ -298,19 +298,19 @@ func (a *DeploymentAPI) Execute(c *gin.Context) {
 
 // BatchCreateRequest 批量创建部署请求
 type BatchCreateRequest struct {
-	Name           string   `json:"name" binding:"required"`
-	Description    string   `json:"description"`
-	Type           string   `json:"type" binding:"required,oneof=nginx_config package certificate"`
-	ServerIDs      []uint   `json:"server_ids" binding:"required,min=1"` // 多个服务器ID
-	NginxConfigID  *uint    `json:"nginx_config_id"`
-	PackageID      *uint    `json:"package_id"`
-	CertificateID  *uint    `json:"certificate_id"`
-	TargetPath     string   `json:"target_path"`
-	BackupEnabled  bool     `json:"backup_enabled"`
-	RestartService bool     `json:"restart_service"`
-	ServiceName    string   `json:"service_name"`
-	DeployParams   string   `json:"deploy_params"` // JSON 格式的部署参数
-	AutoExecute    bool     `json:"auto_execute"`  // 是否自动执行
+	Name           string `json:"name" binding:"required"`
+	Description    string `json:"description"`
+	Type           string `json:"type" binding:"required,oneof=nginx_config package certificate"`
+	ServerIDs      []uint `json:"server_ids" binding:"required,min=1"` // 多个服务器ID
+	NginxConfigID  *uint  `json:"nginx_config_id"`
+	PackageID      *uint  `json:"package_id"`
+	CertificateID  *uint  `json:"certificate_id"`
+	TargetPath     string `json:"target_path"`
+	BackupEnabled  bool   `json:"backup_enabled"`
+	RestartService bool   `json:"restart_service"`
+	ServiceName    string `json:"service_name"`
+	DeployParams   string `json:"deploy_params"` // JSON 格式的部署参数
+	AutoExecute    bool   `json:"auto_execute"`  // 是否自动执行
 }
 
 // BatchCreate 批量创建部署任务

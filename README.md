@@ -1,18 +1,14 @@
-# 中间件离线部署管理平台
+# Nginx 离线部署管理平台
 
-一个用于离线环境部署中间件（Nginx、Redis、OpenSSH）的 Web 管理平台，使用 Go + React 技术栈构建。
+一个用于离线环境部署和管理 Nginx 的 Web 平台，提供离线包上传、SSL 证书管理、Nginx 配置编排、远程部署执行与实时日志能力，技术栈为 Go + React。
 
 ## 🚀 功能特性
 
-### 当前已实现（阶段 1-2）
+### 已实现能力
 - ✅ 基础认证系统（JWT）
 - ✅ 用户登录/登出
 - ✅ 响应式管理界面
-- ✅ Nginx JSON 日志格式
-- ✅ 离线部署脚本（Nginx、Redis、OpenSSH）
-
-### 已完成（阶段 3-8）
-- ✅ 离线包管理（上传、版本管理、元数据解析）
+- ✅ Nginx 离线包管理（上传、版本管理、元数据解析）
 - ✅ SSL 证书管理（上传、查看、应用）
 - ✅ Nginx 可视化配置（创建、编辑、应用到服务器）
 - ✅ 服务器管理（本地/远程 SSH 连接）
@@ -20,17 +16,15 @@
 - ✅ 参数化部署（动态表单生成、参数验证）
 - ✅ 部署历史与统计（仪表盘数据可视化）
 
-### 待完成（阶段 9-10）
+### 待完成
 - 🚧 端到端测试
 - 🚧 生产环境部署准备
 
-## 📦 支持的中间件
+## 📦 当前支持
 
-| 中间件 | 版本 | 支持系统 |
-|--------|------|----------|
+| 组件 | 版本 | 支持系统 |
+|------|------|----------|
 | Nginx | 1.28.0 | Rocky Linux 9.4, OpenEuler 22.03, Kylin V10, CentOS 7.9 |
-| Redis | 6.2.20 | Rocky Linux 9.4 |
-| OpenSSH | 10.0p2 | Rocky Linux, OpenEuler, Kylin V10 |
 
 ## 🛠️ 技术栈
 
@@ -42,11 +36,11 @@
 - **日志**: Logrus
 
 ### 前端
-- **框架**: React 18 + TypeScript
+- **框架**: React 19 + TypeScript
 - **构建**: Vite
-- **UI库**: Ant Design v5
+- **UI库**: Ant Design 6
 - **状态管理**: Redux Toolkit
-- **路由**: React Router v6
+- **路由**: React Router 7
 - **HTTP**: Axios
 
 ## 📋 环境要求
@@ -72,7 +66,7 @@ go mod tidy
 go run cmd/server/main.go
 ```
 
-后端服务将在 `http://localhost:8080` 启动
+后端服务将在 `http://localhost:8080` 启动。
 
 **默认管理员账号**:
 - 用户名: `admin`
@@ -80,51 +74,31 @@ go run cmd/server/main.go
 
 ### 3. 启动前端服务
 
-打开新终端：
-
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-前端服务将在 `http://localhost:5173` 启动
+前端服务将在 `http://localhost:5173` 启动。
 
 ### 4. 访问系统
 
-在浏览器打开: `http://localhost:5173`
-
-使用默认账号登录即可开始使用。
+在浏览器打开 `http://localhost:5173`，使用默认账号登录即可开始使用。
 
 ## 📁 项目结构
 
-```
+```text
 middleware-deploy-kit/
 ├── backend/                 # Go 后端
 │   ├── cmd/server/         # 主程序入口
-│   ├── internal/           # 内部包
-│   │   ├── api/           # API 处理器
-│   │   ├── models/        # 数据模型
-│   │   ├── db/            # 数据库层
-│   │   ├── service/       # 业务逻辑
-│   │   ├── config/        # 配置
-│   │   └── utils/         # 工具函数
-│   ├── pkg/               # 公共包
-│   ├── data/              # 运行时数据
-│   └── scripts/           # 增强版部署脚本
-│
-├── frontend/              # React 前端
-│   ├── src/
-│   │   ├── api/          # API 客户端
-│   │   ├── components/   # 组件
-│   │   ├── pages/        # 页面
-│   │   ├── store/        # Redux
-│   │   ├── hooks/        # 自定义 Hooks
-│   │   └── types/        # TypeScript 类型
-│
-├── nginx/                 # Nginx 部署脚本
-├── redis/                 # Redis 部署脚本
-└── openssh_auto_install_10.0p2/  # OpenSSH 部署脚本
+│   ├── internal/           # API、模型、数据库、配置
+│   ├── pkg/                # 公共包
+│   └── data/               # 运行时数据
+├── frontend/               # React 前端
+│   └── src/                # 页面、组件、API 客户端、状态管理
+└── packages/
+    └── nginx/              # Nginx 离线包与元数据
 ```
 
 ## 🔧 配置说明
@@ -155,7 +129,7 @@ JWT:
 VITE_API_BASE_URL=http://localhost:8080/api/v1
 ```
 
-## 📝 API 文档
+## 📝 API 概览
 
 ### 认证接口
 
@@ -166,11 +140,18 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1
 | GET | `/api/v1/auth/profile` | 获取用户信息 | ✅ |
 | PUT | `/api/v1/auth/password` | 修改密码 | ✅ |
 
+### 核心资源
+- `/api/v1/packages`: Nginx 离线包上传、查询、元数据解析
+- `/api/v1/certificates`: SSL 证书管理
+- `/api/v1/nginx`: Nginx 配置创建、预览、应用历史
+- `/api/v1/deployments`: Nginx 离线包/证书部署、执行、取消、日志流
+- `/api/v1/servers`: 服务器连接信息与 SSH 测试
+
 ## 🗺️ 开发路线图
 
 - [x] **阶段 1**: 基础改进（.gitignore、Nginx JSON日志）
 - [x] **阶段 2**: 基础架构（Go后端 + React前端 + JWT认证）
-- [x] **阶段 3**: 离线包和证书管理
+- [x] **阶段 3**: Nginx 离线包和证书管理
 - [x] **阶段 4**: 服务器管理
 - [x] **阶段 5**: Nginx 可视化配置
 - [x] **阶段 6**: 脚本重构（智能重试、幂等性）
@@ -181,7 +162,7 @@ VITE_API_BASE_URL=http://localhost:8080/api/v1
 
 ## 🤝 贡献指南
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request。
 
 ## 📄 许可证
 
@@ -193,6 +174,6 @@ MIT License
 
 ---
 
-**当前版本**: v0.9.0-dev (阶段 1-8 完成)
+**当前版本**: v0.9.0-dev
 
-**上次更新**: 2026-03-02
+**上次更新**: 2026-03-09

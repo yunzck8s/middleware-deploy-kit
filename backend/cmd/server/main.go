@@ -17,7 +17,7 @@ import (
 func main() {
 	// 初始化日志
 	logger.Init()
-	logger.Info("=== 中间件离线部署管理平台启动中 ===")
+	logger.Info("=== Nginx 离线部署管理平台启动中 ===")
 
 	// 加载配置
 	cfg := config.NewConfig()
@@ -88,11 +88,11 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	packages := v1.Group("/packages")
 	packages.Use(api.AuthMiddleware(cfg))
 	{
-		packages.POST("", packageAPI.Upload)                // 上传离线包
-		packages.GET("", packageAPI.List)                   // 获取离线包列表
-		packages.GET("/:id", packageAPI.Get)                // 获取离线包详情
+		packages.POST("", packageAPI.Upload)                  // 上传离线包
+		packages.GET("", packageAPI.List)                     // 获取离线包列表
+		packages.GET("/:id", packageAPI.Get)                  // 获取离线包详情
 		packages.GET("/:id/metadata", packageAPI.GetMetadata) // 获取离线包元数据
-		packages.DELETE("/:id", packageAPI.Delete)          // 删除离线包
+		packages.DELETE("/:id", packageAPI.Delete)            // 删除离线包
 	}
 
 	// 证书管理 API
@@ -100,11 +100,11 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	certificates := v1.Group("/certificates")
 	certificates.Use(api.AuthMiddleware(cfg))
 	{
-		certificates.POST("", certAPI.Upload)                  // 上传证书
-		certificates.GET("", certAPI.List)                     // 获取证书列表
-		certificates.GET("/:id", certAPI.Get)                  // 获取证书详情
-		certificates.GET("/:id/download", certAPI.Download)    // 下载证书文件
-		certificates.DELETE("/:id", certAPI.Delete)            // 删除证书
+		certificates.POST("", certAPI.Upload)               // 上传证书
+		certificates.GET("", certAPI.List)                  // 获取证书列表
+		certificates.GET("/:id", certAPI.Get)               // 获取证书详情
+		certificates.GET("/:id/download", certAPI.Download) // 下载证书文件
+		certificates.DELETE("/:id", certAPI.Delete)         // 删除证书
 	}
 
 	// 服务器管理 API
@@ -112,13 +112,13 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	servers := v1.Group("/servers")
 	servers.Use(api.AuthMiddleware(cfg))
 	{
-		servers.POST("", serverAPI.Create)                       // 创建服务器
-		servers.GET("", serverAPI.List)                          // 获取服务器列表
-		servers.GET("/:id", serverAPI.Get)                       // 获取服务器详情
-		servers.PUT("/:id", serverAPI.Update)                    // 更新服务器
-		servers.DELETE("/:id", serverAPI.Delete)                 // 删除服务器
-		servers.POST("/:id/test", serverAPI.TestConnection)      // 测试已保存服务器连接
-		servers.POST("/test", serverAPI.TestConnectionDirect)    // 直接测试连接（不保存）
+		servers.POST("", serverAPI.Create)                    // 创建服务器
+		servers.GET("", serverAPI.List)                       // 获取服务器列表
+		servers.GET("/:id", serverAPI.Get)                    // 获取服务器详情
+		servers.PUT("/:id", serverAPI.Update)                 // 更新服务器
+		servers.DELETE("/:id", serverAPI.Delete)              // 删除服务器
+		servers.POST("/:id/test", serverAPI.TestConnection)   // 测试已保存服务器连接
+		servers.POST("/test", serverAPI.TestConnectionDirect) // 直接测试连接（不保存）
 	}
 
 	// Nginx 配置 API
@@ -126,29 +126,29 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	nginx := v1.Group("/nginx")
 	nginx.Use(api.AuthMiddleware(cfg))
 	{
-		nginx.POST("", nginxAPI.Create)                       // 创建 Nginx 配置
-		nginx.GET("", nginxAPI.List)                          // 获取配置列表
-		nginx.GET("/:id", nginxAPI.Get)                       // 获取配置详情
-		nginx.PUT("/:id", nginxAPI.Update)                    // 更新配置
-		nginx.DELETE("/:id", nginxAPI.Delete)                 // 删除配置
-		nginx.GET("/:id/generate", nginxAPI.Generate)         // 生成配置文件
-		nginx.POST("/preview", nginxAPI.Preview)              // 预览配置（不保存）
-		nginx.POST("/:id/apply", nginxAPI.ApplyConfig)        // 应用配置到服务器
-		nginx.GET("/:id/apply-history", nginxAPI.GetApplyHistory) // 获取配置应用历史
-		nginx.GET("/applies/:id", nginxAPI.GetApplyDetail)    // 获取应用详情
+		nginx.POST("", nginxAPI.Create)                                   // 创建 Nginx 配置
+		nginx.GET("", nginxAPI.List)                                      // 获取配置列表
+		nginx.GET("/:id", nginxAPI.Get)                                   // 获取配置详情
+		nginx.PUT("/:id", nginxAPI.Update)                                // 更新配置
+		nginx.DELETE("/:id", nginxAPI.Delete)                             // 删除配置
+		nginx.GET("/:id/generate", nginxAPI.Generate)                     // 生成配置文件
+		nginx.POST("/preview", nginxAPI.Preview)                          // 预览配置（不保存）
+		nginx.POST("/:id/apply", nginxAPI.ApplyConfig)                    // 应用配置到服务器
+		nginx.GET("/:id/apply-history", nginxAPI.GetApplyHistory)         // 获取配置应用历史
+		nginx.GET("/applies/:id", nginxAPI.GetApplyDetail)                // 获取应用详情
 		nginx.GET("/deploy-info/:server_id", nginxAPI.GetNginxDeployInfo) // 获取服务器上的 Nginx 部署信息
 
 		// Upstream 管理
 		nginx.GET("/:id/upstreams", nginxAPI.GetUpstreams)       // 获取 Upstream 列表
 		nginx.POST("/:id/upstreams", nginxAPI.CreateUpstream)    // 创建 Upstream
-		nginx.PUT("/upstreams/:uid", nginxAPI.UpdateUpstream)     // 更新 Upstream
-		nginx.DELETE("/upstreams/:uid", nginxAPI.DeleteUpstream)  // 删除 Upstream
+		nginx.PUT("/upstreams/:uid", nginxAPI.UpdateUpstream)    // 更新 Upstream
+		nginx.DELETE("/upstreams/:uid", nginxAPI.DeleteUpstream) // 删除 Upstream
 
 		// Location 管理
-		nginx.GET("/:id/locations", nginxAPI.GetLocations)       // 获取 Location 列表
-		nginx.POST("/:id/locations", nginxAPI.CreateLocation)    // 创建 Location
-		nginx.PUT("/locations/:lid", nginxAPI.UpdateLocation)     // 更新 Location
-		nginx.DELETE("/locations/:lid", nginxAPI.DeleteLocation)  // 删除 Location
+		nginx.GET("/:id/locations", nginxAPI.GetLocations)              // 获取 Location 列表
+		nginx.POST("/:id/locations", nginxAPI.CreateLocation)           // 创建 Location
+		nginx.PUT("/locations/:lid", nginxAPI.UpdateLocation)           // 更新 Location
+		nginx.DELETE("/locations/:lid", nginxAPI.DeleteLocation)        // 删除 Location
 		nginx.PUT("/:id/locations/order", nginxAPI.UpdateLocationOrder) // 更新 Location 排序
 	}
 
@@ -174,11 +174,11 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	scripts := v1.Group("/scripts")
 	scripts.Use(api.AuthMiddleware(cfg))
 	{
-		scripts.POST("", scriptAPI.Create)         // 创建脚本模板
-		scripts.GET("", scriptAPI.List)            // 获取脚本模板列表
-		scripts.GET("/:id", scriptAPI.Get)         // 获取脚本模板详情
-		scripts.PUT("/:id", scriptAPI.Update)      // 更新脚本模板
-		scripts.DELETE("/:id", scriptAPI.Delete)   // 删除脚本模板
+		scripts.POST("", scriptAPI.Create)       // 创建脚本模板
+		scripts.GET("", scriptAPI.List)          // 获取脚本模板列表
+		scripts.GET("/:id", scriptAPI.Get)       // 获取脚本模板详情
+		scripts.PUT("/:id", scriptAPI.Update)    // 更新脚本模板
+		scripts.DELETE("/:id", scriptAPI.Delete) // 删除脚本模板
 	}
 
 	// 健康检查
