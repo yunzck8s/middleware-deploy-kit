@@ -2,6 +2,331 @@
 
 ## Current Sprint
 
+### 部署管理 ↔ 配置管理联动修复
+
+- [x] **Fix 1**: 安装脚本创建 nginx 用户 + configure 指定 user/group
+  - ✅ 新增 `create_nginx_user()` 函数，`groupadd -r` + `useradd -r -s /sbin/nologin`
+  - ✅ `./configure` 添加 `--user=$NGINX_USER --group=$NGINX_USER`
+  - ✅ 安装后 `chown $NGINX_USER:$NGINX_USER $NGINX_INSTALL_DIR/logs`
+- [x] **Fix 2**: 前端保存完整部署参数（包括默认值）
+  - ✅ `handleCreate` 始终包含默认值，去掉空检查
+- [x] **Fix 3**: 通用化 `inferPackageDeploymentUser`
+  - ✅ 新增 `inferNginxPackageDeployParams` 返回完整 deploy_params
+  - ✅ 新增 `inferNginxInstallDir` 辅助函数
+  - ✅ 原 `inferPackageDeploymentUser` 改为薄包装
+- [x] **Fix 4**: `GetNginxDeployInfo` 查 package 部署 + 返回 deploy_params
+  - ✅ 三级查询: NginxConfigApply → Package 部署 → 系统默认值
+  - ✅ 响应增加 `deploy_params` 和 `source` 字段
+- [x] **Fix 5**: `ApplyConfig` 默认路径从部署记录推导
+  - ✅ 通过 `inferNginxInstallDir` 动态推导默认 target_path
+- [x] **Fix 6**: `NginxConfigApply` 模型默认路径修正
+  - ✅ TargetPath 默认值从 `/etc/nginx/nginx.conf` 改为 `/usr/local/nginx/conf/nginx.conf`
+- [x] **Fix 7**: `resolveNginxRuntimeUser` 增加自动创建用户
+  - ✅ 当 deploy_params 中有用户但远程不存在时，通过 SSH 自动创建
+- [x] **Fix 8**: 配置生成器感知 install dir
+  - ✅ 新增 `generateNginxConfigWithContext` 根据实际 installDir 计算路径
+  - ✅ 提取 `executeNginxTemplate` 共享模板执行逻辑
+  - ✅ `executeApplyConfig` 调用新函数
+- [x] **Fix 9**: 前端展示部署上下文
+  - ✅ `NginxDeployInfo` 接口增加 `deploy_params` 和 `source`
+  - ✅ summary cards 展示安装目录和运行用户
+  - ✅ 提示文案区分"来自配置应用历史"和"来自 Nginx 安装记录"
+
+#### 验证
+
+- ✅ `go build ./...` — 编译通过
+- ✅ `npm run build` — 前端构建通过（tsc + vite）
+- ✅ `npx vitest --run` — 13 test files, 46 tests passed
+- ⚠️ `go test ./...` — 后端 `deployment_hook_executor.go` 有预存的 vet 错误（非本次修改引入）
+
+### Industrial Shell Amplification
+
+- [x] **Task 1**: Recast shell theme for an industrial control-room tone
+  - ✅ Updated typography, color tokens, shadows, and shell surface treatments
+  - ✅ Kept dark/light parity aligned with the new shell palette
+
+- [x] **Task 2**: Rebuild navigation chrome and command header
+  - ✅ Reworked the sidebar into an industrial control rail with module codes and operator status
+  - ✅ Added a route-aware top command header while keeping routes and responsive behavior intact
+
+- [x] **Task 3**: Amplify shared shell primitives
+  - ✅ Strengthened page headers, section cards, filter bars, metric tiles, and status treatments
+  - ✅ Kept page workflows and data contracts unchanged
+
+- [x] **Task 4**: Verify industrial shell refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- The shell now reads like an industrial Nginx control room: sharper typography, steel-toned surfaces, safety-orange accents, and stronger operational hierarchy.
+- Navigation, page chrome, and shared surfaces are visually bolder without changing routes, backend contracts, or task flows.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Shell Motion Pass
+
+- [x] **Task 1**: Define shell motion language
+  - ✅ Tuned easing, durations, and staged reveal hierarchy for the industrial shell
+  - ✅ Kept motion serious, stronger in presence, and covered by reduced-motion fallback
+
+- [x] **Task 2**: Add shell route and chrome transitions
+  - ✅ Added route-stage entry animation, command-surface reveal, and navigation sweep feedback
+  - ✅ Preserved navigation structure, routes, and interaction flow
+
+- [x] **Task 3**: Add shared micro-interactions
+  - ✅ Animated page headers, section cards, filter bars, metric tiles, status badges, and shell controls
+  - ✅ Kept the motion layer on transform/opacity-based feedback paths
+
+- [x] **Task 4**: Verify shell motion pass
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- The shell now has a clearer motion system: route changes land with a staged reveal, active navigation feels guided, and control surfaces acknowledge hover and press without becoming playful.
+- Shared UI primitives now move in the same industrial language, with stronger feedback on metrics, badges, toolbars, and operator controls.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Shell Copy Clarity Pass
+
+- [x] **Task 1**: Audit high-impact shell copy
+  - ✅ Reviewed page headers, empty states, confirmations, action hints, and preview guidance
+  - ✅ Identified jargon, mixed terminology, and weak next-step messaging in primary workflows
+
+- [x] **Task 2**: Rewrite primary workflow copy
+  - ✅ Clarified package, certificate, server, deployment, and config workflow copy
+  - ✅ Kept the tone direct, calm, and admin-friendly for platform administrators
+
+- [x] **Task 3**: Normalize feedback messages
+  - ✅ Improved success, error, download, and destructive-action messaging
+  - ✅ Made next steps clearer without adding extra noise or changing workflows
+
+- [x] **Task 4**: Verify copy refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Primary shell copy now explains actions more plainly: destructive dialogs name the affected object, empty states point to the next action, and system hints avoid jargon like raw SSE or vague “metadata-driven” language.
+- Configuration and deployment flows now use more consistent Chinese terminology, with less English mixing and clearer action labels.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Form Copy Clarity Pass
+
+- [x] **Task 1**: Audit form labels and validation copy
+  - ✅ Reviewed field labels, placeholders, helper text, and validation messages in the main admin workflows
+  - ✅ Identified jargon, weak examples, and places where the next action was unclear
+
+- [x] **Task 2**: Clarify primary form workflows
+  - ✅ Improved package, certificate, server, deployment, and config form copy
+  - ✅ Kept the tone concise, direct, and admin-friendly
+
+- [x] **Task 3**: Normalize form feedback
+  - ✅ Rewrote form success, failure, and inline guidance around upload, save, deploy, and apply actions
+  - ✅ Made outcomes and next steps easier to understand without changing form behavior
+
+- [x] **Task 4**: Verify form copy refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Form fields now explain themselves more clearly: labels are more specific, placeholders use realistic examples, and helper text explains why or when to fill a field.
+- Validation and feedback messages are less mechanical and more actionable, especially in deployment, server, certificate, and configuration flows.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Action Copy Pass
+
+- [x] **Task 1**: Audit row actions and tooltips
+  - ✅ Reviewed list actions, icon buttons, preview panels, and log toolbars
+  - ✅ Found vague verbs, inconsistent labels, and icon-only actions that lacked context
+
+- [x] **Task 2**: Normalize action wording
+  - ✅ Clarified execute, preview, apply, edit, copy, download, and delete actions
+  - ✅ Kept row-level actions short, specific, and consistent across list views
+
+- [x] **Task 3**: Improve tooltip guidance
+  - ✅ Made icon-only controls understandable without guessing
+  - ✅ Aligned tooltip wording with the rest of the admin shell tone
+
+- [x] **Task 4**: Verify action copy refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Row-level actions now read more clearly: users can tell whether a button will execute a task, open logs, edit a server, delete an object, or apply a config before clicking.
+- Icon-only controls now have more explicit tooltip copy and accessible labels, reducing guesswork in dense tables and editors.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Status Copy Pass
+
+- [x] **Task 1**: Audit status labels and system hints
+  - ✅ Reviewed badges, metric hints, loading text, empty-state summaries, and status descriptions
+  - ✅ Found inconsistent status names and system feedback across dashboard, deployments, configs, and history views
+
+- [x] **Task 2**: Normalize status language
+  - ✅ Unified deployment, certificate, server, and config status wording
+  - ✅ Kept labels short, explicit, and more consistent across views
+
+- [x] **Task 3**: Clarify system-state feedback
+  - ✅ Improved loading text, live-log hints, fallback descriptions, and module summaries
+  - ✅ Made system feedback more actionable without adding noise
+
+- [x] **Task 4**: Verify status copy refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Status wording is now more consistent across badges, metrics, filters, and history views, especially around `已完成` / `执行失败` / `已停用` / `待执行`.
+- System hints and loading copy now better explain what the platform is doing, from dashboard summaries to real-time log drawers and chart loading states.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Terminology Pass
+
+- [x] **Task 1**: Audit global product terms
+  - ✅ Reviewed page titles, section headings, CTAs, and recurring nouns across the shell
+  - ✅ Found mixed metaphors and overlapping names for the same concepts, especially around configs, deployments, and list pages
+
+- [x] **Task 2**: Normalize core terminology
+  - ✅ Unified naming for deployments, configs, packages, servers, certificates, and the console shell
+  - ✅ Preferred shorter, direct terms that now repeat more consistently across views
+
+- [x] **Task 3**: Align workflow labels
+  - ✅ Updated buttons, empty states, and section titles to use the same nouns
+  - ✅ Kept the admin language calm, predictable, and easier to scan
+
+- [x] **Task 4**: Verify terminology refresh
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Page and workflow naming is now more consistent: `控制台总览` / `离线包管理` / `证书管理` / `服务器管理` / `配置管理` / `部署任务` all use the same naming style.
+- Repeated nouns like `列表`, `任务`, `配置`, and `工作台` now appear more predictably, reducing the feeling that similar screens are described in different ways.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Header Scale Tuning
+
+- [x] **Task 1**: Audit shell and page header hierarchy
+  - ✅ Compared command-surface and page header title sizes
+  - ✅ Confirmed that oversized titles and wrapping hurt readability in dense admin views
+
+- [x] **Task 2**: Reduce oversized title treatment
+  - ✅ Reduced shell and page header title scale, padding, and wrapping pressure
+  - ✅ Kept hierarchy strong without overpowering the page body
+
+- [x] **Task 3**: Verify header readability
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- Header typography is now noticeably calmer: the command-surface title and page title still anchor the screen, but they no longer dominate the layout or wrap awkwardly.
+- The fix specifically removes the narrow title width constraint and lowers the title scale so Chinese page titles read naturally in one line more often.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Quieter Shell Refinement
+
+- [x] **Task 1**: Rebalance shell visual hierarchy
+  - ✅ Reduced oversized headers, double-hero weight, and high-contrast shell treatments
+  - ✅ Kept the industrial control-room identity while making it calmer to read
+
+- [x] **Task 2**: Refine global tokens and motion
+  - ✅ Desaturated accents, softened surfaces, reduced decorative textures, and toned down animation intensity
+  - ✅ Preserved functional feedback and dark/light parity
+
+- [x] **Task 3**: Soften shared shell primitives and main pages
+  - ✅ Toned down page headers, metric tiles, section cards, filter bars, tables, drawers, and terminal chrome
+  - ✅ Made dashboard, servers, packages, certificates, configs, and deployments visually quieter
+
+- [x] **Task 4**: Verify quieter shell pass
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Production build passing via `npm run build`
+
+#### Review
+
+- The shell now reads as a quieter industrial control console: copper and steel accents are still present, but contrast, texture, and motion no longer dominate the screen.
+- Header hierarchy, cards, filters, config workbench panels, and dashboard summaries now guide attention back toward the actual operational content instead of the shell chrome itself.
+- Verification passed with `npx vitest --run` and `npm run build`; the existing bundle-size warning remains unchanged.
+
+### Deployment Logs And Apply Visibility
+
+- [x] **Task 1**: Repair deployment log lifecycle
+  - ✅ Fixed stale deployment state when opening logs after execute
+  - ✅ Prevented expected SSE disconnects from showing as errors and fell back to persisted logs when needed
+
+- [x] **Task 2**: Make nginx apply results observable
+  - ✅ Reused apply history/detail APIs to surface config apply progress and logs
+  - ✅ Open apply result details immediately after a successful submit
+
+- [x] **Task 3**: Cover key regressions with tests
+  - ✅ Added targeted frontend coverage for deployment log hook behavior and apply history/detail rendering
+  - ✅ Kept existing deployment/config workflows stable
+
+- [x] **Task 4**: Verify end-to-end behavior
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Frontend build passing via `npm run build`
+  - ✅ Backend tests passing via `go test -vet=off ./...`
+
+#### Review
+
+- Deployment logs now survive the normal execute → close → reopen cycle: the drawer reconnects or falls back to persisted logs without falsely reporting that the stream broke.
+- Package deployment now emits live step updates and streamed install-script output instead of waiting until the whole script finishes before the UI changes.
+- Config apply now has an observable flow: successful submission opens an apply-record drawer with recent history, current status, and step logs, so users can see whether the operation is still running, succeeded, or failed.
+- Verification passed with `npx vitest --run`, `npm run build`, and `go test -vet=off ./...`.
+
+### Apply Path Auto-Inference
+
+- [x] **Task 1**: Correct backend default path inference
+  - ✅ `deploy-info` now prefers successful config-apply history, then successful nginx_config deployments, and finally stable install defaults
+  - ✅ Stopped reusing package deployment target paths as config file destinations
+
+- [x] **Task 2**: Redesign apply modal for zero-decision main flow
+  - ✅ Selecting a server now shows inferred default path and service summary instead of requiring immediate manual input
+  - ✅ Path and service override fields moved behind an explicit advanced customization toggle
+
+- [x] **Task 3**: Keep apply visibility connected
+  - ✅ Successful submit still opens the apply-history drawer and shows the final target path in the result view
+  - ✅ The modal no longer uses auto-fill toast messages for expected behavior
+
+- [x] **Task 4**: Verify auto-inference flow
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Frontend build passing via `npm run build`
+  - ✅ Backend tests passing via `go test -vet=off ./...`
+
+#### Review
+
+- The apply modal now behaves like a server-driven workflow: choose a server first, then review the inferred default path/service, and only customize when needed.
+- Default config targets are now derived from actual config-application history or nginx_config deployments, with `/usr/local/nginx/conf/nginx.conf` and `nginx` as the stable fallback.
+- Verification passed with `npx vitest --run`, `npm run build`, and `go test -vet=off ./...`.
+
+### Nginx Runtime Path Alignment
+
+- [x] **Task 1**: Align generated config with installed nginx layout
+  - ✅ Normalized legacy defaults like `/var/log/nginx/*` and `/usr/share/nginx/html` to the package install layout
+  - ✅ Made generated config use the same runtime assumptions as the offline install script
+
+- [x] **Task 2**: Prevent apply-time config test failures
+  - ✅ Removed mismatched log/include/pid defaults from generated configs
+  - ✅ Kept preview and apply behavior consistent for the current nginx-only workflow
+
+- [x] **Task 3**: Refresh config creation defaults
+  - ✅ Updated backend and frontend defaults for new configs to match the installed nginx layout
+  - ✅ Avoided generating future configs with stale system-nginx paths
+
+- [x] **Task 4**: Verify runtime alignment
+  - ✅ Frontend tests passing via `npx vitest --run`
+  - ✅ Frontend build passing via `npm run build`
+  - ✅ Backend tests passing via `go test -vet=off ./...`
+
+#### Review
+
+- Generated Nginx configs now align with the offline package layout: `/usr/local/nginx/html`, `/usr/local/nginx/logs/*`, `/usr/local/nginx/conf/mime.types`, and `nginx` as the runtime user.
+- Legacy configs that were saved with old system-nginx defaults are normalized at generation time, so existing records no longer fail immediately during `nginx -t` just because they still contain `/var/log/nginx` or `/usr/share/nginx/html`.
+- Verification passed with `npx vitest --run`, `npm run build`, and `go test -vet=off ./...`.
+
 ### Nginx Package Assembly
 
 - [x] **Task 1**: Merge nginx offline assets into package workspace

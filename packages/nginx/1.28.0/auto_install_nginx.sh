@@ -235,6 +235,21 @@ install_dependencies() {
     print_success "依赖安装完成"
 }
 
+# 创建 Nginx 运行用户
+create_nginx_user() {
+    print_info "检查 Nginx 运行用户: $NGINX_USER"
+
+    if id "$NGINX_USER" &>/dev/null; then
+        print_info "用户 $NGINX_USER 已存在，跳过创建"
+        return 0
+    fi
+
+    print_info "创建系统用户 $NGINX_USER..."
+    groupadd -r "$NGINX_USER" 2>/dev/null || true
+    useradd -r -g "$NGINX_USER" -s /sbin/nologin -d /nonexistent -c "Nginx web server" "$NGINX_USER"
+    print_success "用户 $NGINX_USER 创建完成"
+}
+
 # 编译安装 Nginx
 compile_nginx() {
     if [[ ! -f "$PACKAGE_DIR/$NGINX_TAR" ]]; then
@@ -245,9 +260,12 @@ compile_nginx() {
     tar -zxvf "$PACKAGE_DIR/$NGINX_TAR"
     cd "nginx-${NGINX_VERSION}"
 
-    ./configure --prefix=$NGINX_INSTALL_DIR --with-http_ssl_module
+    ./configure --prefix=$NGINX_INSTALL_DIR --user=$NGINX_USER --group=$NGINX_USER --with-http_ssl_module
     make
     make install
+
+    # 设置日志目录权限
+    chown -R $NGINX_USER:$NGINX_USER $NGINX_INSTALL_DIR/logs
 
     print_success "Nginx 编译安装完成"
 }
@@ -383,6 +401,7 @@ main() {
     print_info "========================================"
     setup_local_repo
     install_dependencies
+    create_nginx_user
     compile_nginx
     configure_service
     start_nginx

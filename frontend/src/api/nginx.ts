@@ -1,5 +1,5 @@
 import client from './client';
-import type { NginxConfig, NginxUpstream, NginxLocation, ApiResponse } from '../types';
+import type { NginxConfig, NginxConfigApply, NginxUpstream, NginxLocation, ApiResponse } from '../types';
 
 export interface NginxConfigListParams {
   status?: string;
@@ -131,9 +131,11 @@ export interface ApplyHistoryParams {
 
 export interface NginxDeployInfo {
   found: boolean;
+  source?: string;
   target_path?: string;
   service_name?: string;
   deployed_at?: string;
+  deploy_params?: Record<string, any>;
 }
 
 export const getNginxDeployInfo = async (serverId: number): Promise<NginxDeployInfo> => {
@@ -141,19 +143,26 @@ export const getNginxDeployInfo = async (serverId: number): Promise<NginxDeployI
   return (response as unknown as ApiResponse<NginxDeployInfo>).data!;
 };
 
-export const applyNginxConfig = async (id: number, data: ApplyConfigData): Promise<any> => {
-  const response = await client.post<ApiResponse<any>>(`/nginx/${id}/apply`, data);
-  return (response as unknown as ApiResponse<any>).data!;
+export interface ApplyHistoryResponse {
+  applies: NginxConfigApply[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export const applyNginxConfig = async (id: number, data: ApplyConfigData): Promise<NginxConfigApply> => {
+  const response = await client.post<ApiResponse<NginxConfigApply>>(`/nginx/${id}/apply`, data);
+  return (response as unknown as ApiResponse<NginxConfigApply>).data!;
 };
 
-export const getApplyHistory = async (id: number, params?: ApplyHistoryParams): Promise<any> => {
-  const response = await client.get<ApiResponse<any>>(`/nginx/${id}/apply-history`, { params });
-  return (response as unknown as ApiResponse<any>).data!;
+export const getApplyHistory = async (id: number, params?: ApplyHistoryParams): Promise<ApplyHistoryResponse> => {
+  const response = await client.get<ApiResponse<ApplyHistoryResponse>>(`/nginx/${id}/apply-history`, { params });
+  return (response as unknown as ApiResponse<ApplyHistoryResponse>).data!;
 };
 
-export const getApplyDetail = async (applyId: number): Promise<any> => {
-  const response = await client.get<ApiResponse<any>>(`/nginx/applies/${applyId}`);
-  return (response as unknown as ApiResponse<any>).data!;
+export const getApplyDetail = async (applyId: number): Promise<NginxConfigApply> => {
+  const response = await client.get<ApiResponse<NginxConfigApply>>(`/nginx/applies/${applyId}`);
+  return (response as unknown as ApiResponse<NginxConfigApply>).data!;
 };
 
 // ==================== Upstream CRUD ====================

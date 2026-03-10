@@ -13,7 +13,7 @@ type NginxConfigApply struct {
 	ServerID      uint   `json:"server_id" gorm:"not null;index"`
 
 	// 部署配置
-	TargetPath     string `json:"target_path" gorm:"default:'/etc/nginx/nginx.conf'"` // 目标路径
+	TargetPath     string `json:"target_path" gorm:"default:'/usr/local/nginx/conf/nginx.conf'"` // 目标路径
 	BackupEnabled  bool   `json:"backup_enabled" gorm:"default:true"`                 // 是否备份
 	BackupPath     string `json:"backup_path"`                                         // 备份路径
 	RestartService bool   `json:"restart_service" gorm:"default:true"`                // 是否重启服务

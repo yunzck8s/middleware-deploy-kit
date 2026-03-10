@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -96,10 +97,10 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		CertificateID:     req.CertificateID,
 		HTTPToHTTPS:       req.HTTPToHTTPS,
 		ServerName:        defaultString(req.ServerName, "_"),
-		RootPath:          defaultString(req.RootPath, "/usr/share/nginx/html"),
+		RootPath:          defaultString(req.RootPath, defaultNginxRootPath()),
 		IndexFiles:        defaultString(req.IndexFiles, "index.html index.htm"),
-		AccessLogPath:     defaultString(req.AccessLogPath, "/var/log/nginx/access.log"),
-		ErrorLogPath:      defaultString(req.ErrorLogPath, "/var/log/nginx/error.log"),
+		AccessLogPath:     defaultString(req.AccessLogPath, defaultNginxAccessLogPath()),
+		ErrorLogPath:      defaultString(req.ErrorLogPath, defaultNginxErrorLogPath()),
 		LogFormat:         defaultString(req.LogFormat, "main"),
 		RotateEnabled:     req.RotateEnabled,
 		RotateFrequency:   defaultString(req.RotateFrequency, "daily"),
@@ -373,10 +374,10 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 		HTTPSPort:         defaultInt(req.HTTPSPort, 443),
 		HTTPToHTTPS:       req.HTTPToHTTPS,
 		ServerName:        defaultString(req.ServerName, "_"),
-		RootPath:          defaultString(req.RootPath, "/usr/share/nginx/html"),
+		RootPath:          defaultString(req.RootPath, defaultNginxRootPath()),
 		IndexFiles:        defaultString(req.IndexFiles, "index.html index.htm"),
-		AccessLogPath:     defaultString(req.AccessLogPath, "/var/log/nginx/access.log"),
-		ErrorLogPath:      defaultString(req.ErrorLogPath, "/var/log/nginx/error.log"),
+		AccessLogPath:     defaultString(req.AccessLogPath, defaultNginxAccessLogPath()),
+		ErrorLogPath:      defaultString(req.ErrorLogPath, defaultNginxErrorLogPath()),
 		LogFormat:         defaultString(req.LogFormat, "main"),
 		RotateEnabled:     req.RotateEnabled,
 		RotateFrequency:   defaultString(req.RotateFrequency, "daily"),
@@ -422,15 +423,233 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 }
 
 // generateNginxConfig 生成 Nginx 配置文件内容
+const (
+	defaultNginxInstallDir      = "/usr/local/nginx"
+	packageDefaultNginxUser    = "nginx"
+	fallbackNginxRuntimeUser   = "nobody"
+)
+
+func defaultNginxRootPath() string {
+	return defaultNginxInstallDir + "/html"
+}
+
+func defaultNginxAccessLogPath() string {
+	return defaultNginxInstallDir + "/logs/access.log"
+}
+
+func defaultNginxErrorLogPath() string {
+	return defaultNginxInstallDir + "/logs/error.log"
+}
+
+func defaultNginxPidPath() string {
+	return defaultNginxInstallDir + "/logs/nginx.pid"
+}
+
+func defaultNginxMimeTypesPath() string {
+	return defaultNginxInstallDir + "/conf/mime.types"
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func remoteUserExists(client *ssh.Client, username string) bool {
+	if strings.TrimSpace(username) == "" {
+		return false
+	}
+	cmd := fmt.Sprintf("id -u %s >/dev/null 2>&1 && echo exists || echo missing", shellQuote(username))
+	output, err := runSSHCommand(client, cmd)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(output) == "exists"
+}
+
+func runSSHCommand(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	output, err := session.CombinedOutput(cmd)
+	return string(output), err
+}
+
+func readRemoteNginxUserDirective(client *ssh.Client, configPath string) string {
+	lookupCmd := fmt.Sprintf(
+		"if [ -f %s ]; then grep -E '^[[:space:]]*user[[:space:]]+' %s | head -1 | sed -E 's/^[[:space:]]*user[[:space:]]+([^;[:space:]]+).*/\\1/' || true; fi",
+		shellQuote(configPath),
+		shellQuote(configPath),
+	)
+	output, err := runSSHCommand(client, lookupCmd)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+func inferNginxPackageDeployParams(serverID uint) map[string]any {
+	var deployment models.Deployment
+	err := db.DB.
+		Joins("JOIN middleware_packages ON middleware_packages.id = deployments.package_id").
+		Where("deployments.server_id = ?", serverID).
+		Where("deployments.type = ?", models.DeployTypePackage).
+		Where("deployments.status = ?", models.DeployStatusSuccess).
+		Where("middleware_packages.name = ?", models.MiddlewareNameNginx).
+		Order("deployments.completed_at DESC").
+		First(&deployment).Error
+	if err != nil || deployment.DeployParams == "" {
+		return nil
+	}
+
+	var params map[string]any
+	if err := json.Unmarshal([]byte(deployment.DeployParams), &params); err != nil {
+		return nil
+	}
+	return params
+}
+
+func inferPackageDeploymentUser(serverID uint) string {
+	params := inferNginxPackageDeployParams(serverID)
+	if params == nil {
+		return ""
+	}
+	value, ok := params["NGINX_USER"]
+	if !ok {
+		return ""
+	}
+	user, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(user)
+}
+
+func inferNginxInstallDir(serverID uint) string {
+	params := inferNginxPackageDeployParams(serverID)
+	if params == nil {
+		return ""
+	}
+	value, ok := params["NGINX_INSTALL_DIR"]
+	if !ok {
+		return ""
+	}
+	dir, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(dir)
+}
+
+func resolveNginxRuntimeUser(client *ssh.Client, serverID uint, targetFile string) (string, string) {
+	candidatePaths := []string{targetFile}
+	defaultConfPath := defaultNginxInstallDir + "/conf/nginx.conf"
+	if targetFile != defaultConfPath {
+		candidatePaths = append(candidatePaths, defaultConfPath)
+	}
+
+	for _, configPath := range candidatePaths {
+		user := readRemoteNginxUserDirective(client, configPath)
+		if user != "" {
+			return user, "现有 nginx.conf"
+		}
+	}
+
+	deploymentUser := inferPackageDeploymentUser(serverID)
+	if deploymentUser != "" {
+		if remoteUserExists(client, deploymentUser) {
+			return deploymentUser, "最近一次 Nginx 安装参数"
+		}
+		// 部署参数中指定了用户但用户不存在，尝试自动创建
+		createCmd := fmt.Sprintf(
+			"groupadd -r %s 2>/dev/null; useradd -r -g %s -s /sbin/nologin -d /nonexistent %s 2>/dev/null && echo created || echo failed",
+			shellQuote(deploymentUser), shellQuote(deploymentUser), shellQuote(deploymentUser),
+		)
+		output, err := runSSHCommand(client, createCmd)
+		if err == nil && strings.TrimSpace(output) == "created" {
+			logger.Infof("自动创建 Nginx 运行用户: %s", deploymentUser)
+			return deploymentUser, "自动创建（来自安装参数）"
+		}
+	}
+
+	if remoteUserExists(client, packageDefaultNginxUser) {
+		return packageDefaultNginxUser, "安装约定"
+	}
+
+	if remoteUserExists(client, fallbackNginxRuntimeUser) {
+		return fallbackNginxRuntimeUser, "安全回退"
+	}
+
+	return "", ""
+}
+
+func normalizeLegacyNginxPath(value, legacy, fallback string) string {
+	if value == "" || value == legacy {
+		return fallback
+	}
+	return value
+}
+
 func generateNginxConfig(cfg *models.NginxConfig) (string, error) {
+	return generateNginxConfigWithRuntimeUser(cfg, fallbackNginxRuntimeUser)
+}
+
+func generateNginxConfigWithContext(cfg *models.NginxConfig, runtimeUser, installDir string) (string, error) {
+	if installDir == "" {
+		installDir = defaultNginxInstallDir
+	}
+
+	resolved := *cfg
+	resolved.RootPath = normalizeLegacyNginxPath(resolved.RootPath, "/usr/share/nginx/html", installDir+"/html")
+	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", installDir+"/logs/access.log")
+	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", installDir+"/logs/error.log")
+
+	data := struct {
+		*models.NginxConfig
+		RuntimeUser   string
+		PidPath       string
+		MimeTypesPath string
+	}{
+		NginxConfig:   &resolved,
+		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
+		PidPath:       installDir + "/logs/nginx.pid",
+		MimeTypesPath: installDir + "/conf/mime.types",
+	}
+
+	return executeNginxTemplate(data)
+}
+
+func generateNginxConfigWithRuntimeUser(cfg *models.NginxConfig, runtimeUser string) (string, error) {
+	resolved := *cfg
+	resolved.RootPath = normalizeLegacyNginxPath(resolved.RootPath, "/usr/share/nginx/html", defaultNginxRootPath())
+	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", defaultNginxAccessLogPath())
+	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", defaultNginxErrorLogPath())
+
+	data := struct {
+		*models.NginxConfig
+		RuntimeUser   string
+		PidPath       string
+		MimeTypesPath string
+	}{
+		NginxConfig:   &resolved,
+		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
+		PidPath:       defaultNginxPidPath(),
+		MimeTypesPath: defaultNginxMimeTypesPath(),
+	}
+
+	return executeNginxTemplate(data)
+}
+
+func executeNginxTemplate(data any) (string, error) {
 	tmpl := `# Nginx 配置文件
 # 由 Nginx 部署平台自动生成
 # 配置名称: {{.Name}}
 
-user nobody;
+user {{.RuntimeUser}};
 worker_processes {{.WorkerProcesses}};
 error_log {{.ErrorLogPath}} warn;
-pid /var/run/nginx.pid;
+pid {{.PidPath}};
 
 events {
     worker_connections {{.WorkerConnections}};
@@ -439,7 +658,7 @@ events {
 }
 
 http {
-    include mime.types;
+    include {{.MimeTypesPath}};
     default_type application/octet-stream;
 
     # 日志格式
@@ -658,7 +877,7 @@ http {
 	}
 
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, cfg); err != nil {
+	if err := t.Execute(&buf, data); err != nil {
 		return "", err
 	}
 
@@ -716,6 +935,15 @@ func defaultString(s, def string) string {
 	return s
 }
 
+func coalesceTime(values ...*time.Time) *time.Time {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
 func defaultInt(n, def int) int {
 	if n == 0 {
 		return def
@@ -761,10 +989,15 @@ func (n *NginxAPI) ApplyConfig(c *gin.Context) {
 	}
 
 	// 创建应用记录
+	defaultTargetPath := defaultNginxInstallDir + "/conf/nginx.conf"
+	if installDir := inferNginxInstallDir(req.ServerID); installDir != "" {
+		defaultTargetPath = installDir + "/conf/nginx.conf"
+	}
+
 	apply := &models.NginxConfigApply{
 		NginxConfigID:  uint(id),
 		ServerID:       req.ServerID,
-		TargetPath:     defaultString(req.TargetPath, "/etc/nginx/nginx.conf"),
+		TargetPath:     defaultString(req.TargetPath, defaultTargetPath),
 		BackupEnabled:  req.BackupEnabled,
 		RestartService: req.RestartService,
 		ServiceName:    defaultString(req.ServiceName, "nginx"),
@@ -878,42 +1111,54 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 		return
 	}
 
-	// 步骤1: 生成配置文件
-	n.addApplyLog(applyID, 1, "生成 Nginx 配置文件", "running", "", "")
-	content, err := generateNginxConfig(cfg)
-	if err != nil {
-		logger.Errorf("生成配置文件失败: %v", err)
-		n.addApplyLog(applyID, 1, "生成 Nginx 配置文件", "failed", "", err.Error())
-		finalStatus = "failed"
-		errorMsg = "生成配置文件失败"
-		return
-	}
-	n.addApplyLog(applyID, 1, "生成 Nginx 配置文件", "success", "配置文件生成成功", "")
-
-	// 步骤2: 连接到目标服务器
-	n.addApplyLog(applyID, 2, "连接到目标服务器", "running", "", "")
+	// 步骤1: 连接到目标服务器
+	n.addApplyLog(applyID, 1, "连接到目标服务器", "running", "", "")
 	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		logger.Errorf("连接服务器失败: %v", err)
-		n.addApplyLog(applyID, 2, "连接到目标服务器", "failed", "", err.Error())
+		n.addApplyLog(applyID, 1, "连接到目标服务器", "failed", "", err.Error())
 		finalStatus = "failed"
 		errorMsg = "连接服务器失败"
 		return
 	}
 	defer sshClient.Close()
 	defer sftpClient.Close()
-	n.addApplyLog(applyID, 2, "连接到目标服务器", "success", "SSH 连接建立成功", "")
+	n.addApplyLog(applyID, 1, "连接到目标服务器", "success", "SSH 连接建立成功", "")
 
-	// 确定目标文件完整路径（提前计算，供后续步骤使用）
+	// 先确定目标文件完整路径（供后续步骤使用）
 	targetFile := apply.TargetPath
-	// 如果目标路径不以 .conf 结尾，说明是目录，需要添加文件名
 	if !strings.HasSuffix(targetFile, ".conf") {
 		targetFile = filepath.Join(targetFile, "nginx.conf")
 	}
 
-	// 步骤3: 备份原配置（如果启用）
+	// 步骤2: 识别 Nginx 运行用户
+	n.addApplyLog(applyID, 2, "识别 Nginx 运行用户", "running", "", "")
+	runtimeUser, userSource := resolveNginxRuntimeUser(sshClient, apply.ServerID, targetFile)
+	if runtimeUser == "" {
+		n.addApplyLog(applyID, 2, "识别 Nginx 运行用户", "failed", "", "未找到可用的 Nginx 运行用户，请先确认现有 nginx.conf 中的 user 配置或在服务器上创建运行用户")
+		finalStatus = "failed"
+		errorMsg = "未找到可用的 Nginx 运行用户"
+		return
+	}
+	n.addApplyLog(applyID, 2, "识别 Nginx 运行用户", "success", fmt.Sprintf("沿用运行用户: %s（来源: %s）", runtimeUser, userSource), "")
+
+	// 步骤3: 生成配置文件
+	n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "running", "", "")
+	installDir := inferNginxInstallDir(apply.ServerID)
+	content, err := generateNginxConfigWithContext(cfg, runtimeUser, installDir)
+	if err != nil {
+		logger.Errorf("生成配置文件失败: %v", err)
+		n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "failed", "", err.Error())
+		finalStatus = "failed"
+		errorMsg = "生成配置文件失败"
+		return
+	}
+	installDirInfo := defaultString(installDir, defaultNginxInstallDir)
+	n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "success", fmt.Sprintf("配置文件生成成功\n运行用户: %s\n安装目录: %s", runtimeUser, installDirInfo), "")
+
+	// 步骤4: 备份原配置（如果启用）
 	if apply.BackupEnabled {
-		n.addApplyLog(applyID, 3, "备份原配置文件", "running", "", "")
+		n.addApplyLog(applyID, 4, "备份原配置文件", "running", "", "")
 		backupPath := targetFile + ".backup." + startTime.Format("20060102150405")
 
 		// 检查原文件是否存在
@@ -930,7 +1175,7 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 			if err != nil {
 				cpOutputStr := string(cpOutput)
 				logger.Errorf("备份配置文件失败: %v, 输出: %s", err, cpOutputStr)
-				n.addApplyLog(applyID, 3, "备份原配置文件", "failed", cpOutputStr, err.Error())
+				n.addApplyLog(applyID, 4, "备份原配置文件", "failed", cpOutputStr, err.Error())
 				finalStatus = "failed"
 				errorMsg = "备份配置失败"
 				return
@@ -946,7 +1191,7 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 
 			if verifyErr != nil {
 				logger.Errorf("备份验证失败 - 文件不存在: %s", backupPath)
-				n.addApplyLog(applyID, 3, "备份原配置文件", "failed", "备份文件验证失败: "+verifyOutputStr, "文件未创建")
+				n.addApplyLog(applyID, 4, "备份原配置文件", "failed", "备份文件验证失败: "+verifyOutputStr, "文件未创建")
 				finalStatus = "failed"
 				errorMsg = "备份验证失败"
 				return
@@ -954,16 +1199,16 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 
 			// 更新备份路径
 			db.DB.Model(&models.NginxConfigApply{}).Where("id = ?", applyID).Update("backup_path", backupPath)
-			n.addApplyLog(applyID, 3, "备份原配置文件", "success", "备份至: "+backupPath+"\n验证: "+verifyOutputStr, "")
+			n.addApplyLog(applyID, 4, "备份原配置文件", "success", "备份至: "+backupPath+"\n验证: "+verifyOutputStr, "")
 		} else {
-			n.addApplyLog(applyID, 3, "备份原配置文件", "success", "原文件不存在，跳过备份", "")
+			n.addApplyLog(applyID, 4, "备份原配置文件", "success", "原文件不存在，跳过备份", "")
 		}
 	}
 
-	// 步骤4: 上传新配置文件
-	stepNum := 4
+	// 步骤5: 上传新配置文件
+	stepNum := 5
 	if !apply.BackupEnabled {
-		stepNum = 3
+		stepNum = 4
 	}
 	n.addApplyLog(applyID, stepNum, "上传新配置文件", "running", "", "")
 
@@ -1587,7 +1832,7 @@ func (n *NginxAPI) UpdateLocationOrder(c *gin.Context) {
 	response.SuccessWithMessage(c, "排序更新成功", locations)
 }
 
-// GetNginxDeployInfo 获取服务器上的 Nginx 部署信息
+// GetNginxDeployInfo 获取服务器上的 Nginx 配置应用默认目标
 func (n *NginxAPI) GetNginxDeployInfo(c *gin.Context) {
 	serverID, err := strconv.ParseUint(c.Param("server_id"), 10, 32)
 	if err != nil {
@@ -1595,30 +1840,53 @@ func (n *NginxAPI) GetNginxDeployInfo(c *gin.Context) {
 		return
 	}
 
-	// 查询该服务器上最近一次成功部署的 nginx 包
-	var deployment models.Deployment
-	err = db.DB.
-		Joins("JOIN middleware_packages ON middleware_packages.id = deployments.package_id").
-		Where("deployments.server_id = ?", serverID).
-		Where("deployments.type = ?", "package").
-		Where("deployments.status = ?", "success").
-		Where("middleware_packages.name = ?", "nginx").
-		Order("deployments.completed_at DESC").
-		First(&deployment).Error
+	const defaultTargetPath = "/usr/local/nginx/conf/nginx.conf"
+	const defaultServiceName = "nginx"
 
-	if err != nil {
-		// 没有找到部署记录，返回默认值
+	// 1. 查找 NginxConfigApply 历史记录
+	var apply models.NginxConfigApply
+	if err := db.DB.
+		Where("server_id = ?", serverID).
+		Where("status = ?", "success").
+		Order("COALESCE(end_time, updated_at) DESC").
+		First(&apply).Error; err == nil {
+		result := gin.H{
+			"found":        true,
+			"source":       "config_apply",
+			"target_path":  defaultString(apply.TargetPath, defaultTargetPath),
+			"service_name": defaultString(apply.ServiceName, defaultServiceName),
+			"deployed_at":  coalesceTime(apply.EndTime, &apply.UpdatedAt),
+		}
+		// 同时附带 package 部署参数（如有）
+		if params := inferNginxPackageDeployParams(uint(serverID)); params != nil {
+			result["deploy_params"] = params
+		}
+		response.Success(c, result)
+		return
+	}
+
+	// 2. 查找 Package 部署记录（新增）
+	if params := inferNginxPackageDeployParams(uint(serverID)); params != nil {
+		installDir := defaultNginxInstallDir
+		if dir, ok := params["NGINX_INSTALL_DIR"].(string); ok && dir != "" {
+			installDir = strings.TrimSpace(dir)
+		}
+		targetPath := installDir + "/conf/nginx.conf"
+
 		response.Success(c, gin.H{
-			"found":       false,
-			"target_path": "",
+			"found":         true,
+			"source":        "package_deploy",
+			"target_path":   targetPath,
+			"service_name":  defaultServiceName,
+			"deploy_params": params,
 		})
 		return
 	}
 
+	// 3. 系统默认值
 	response.Success(c, gin.H{
-		"found":        true,
-		"target_path":  deployment.TargetPath,
-		"service_name": deployment.ServiceName,
-		"deployed_at":  deployment.CompletedAt,
+		"found":        false,
+		"target_path":  defaultTargetPath,
+		"service_name": defaultServiceName,
 	})
 }
