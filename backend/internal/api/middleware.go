@@ -12,31 +12,33 @@ import (
 // AuthMiddleware JWT认证中间件
 func AuthMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从请求头获取token
+		var token string
+
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			response.Unauthorized(c, "未提供认证信息")
-			c.Abort()
-			return
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || parts[0] != "Bearer" {
+				response.Unauthorized(c, "认证格式错误")
+				c.Abort()
+				return
+			}
+			token = parts[1]
+		} else {
+			token = c.Query("token")
+			if token == "" {
+				response.Unauthorized(c, "未提供认证信息")
+				c.Abort()
+				return
+			}
 		}
 
-		// Bearer token格式
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			response.Unauthorized(c, "认证格式错误")
-			c.Abort()
-			return
-		}
-
-		// 解析token
-		claims, err := utils.ParseToken(parts[1], cfg)
+		claims, err := utils.ParseToken(token, cfg)
 		if err != nil {
 			response.Unauthorized(c, "无效的token")
 			c.Abort()
 			return
 		}
 
-		// 将用户信息存入上下文
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
 

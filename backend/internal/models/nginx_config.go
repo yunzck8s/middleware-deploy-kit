@@ -29,12 +29,12 @@ type NginxConfig struct {
 
 	// Server 配置
 	ServerName   string `json:"server_name" gorm:"default:'_'"`              // 域名
-	RootPath     string `json:"root_path" gorm:"default:'/usr/share/nginx/html'"` // 根目录
+	RootPath     string `json:"root_path" gorm:"default:'/usr/local/nginx/html'"` // 根目录
 	IndexFiles   string `json:"index_files" gorm:"default:'index.html index.htm'"` // 索引文件
 
 	// 日志配置
-	AccessLogPath string `json:"access_log_path" gorm:"default:'/var/log/nginx/access.log'"` // 访问日志
-	ErrorLogPath  string `json:"error_log_path" gorm:"default:'/var/log/nginx/error.log'"`   // 错误日志
+	AccessLogPath string `json:"access_log_path" gorm:"default:'/usr/local/nginx/logs/access.log'"` // 访问日志
+	ErrorLogPath  string `json:"error_log_path" gorm:"default:'/usr/local/nginx/logs/error.log'"`   // 错误日志
 	LogFormat     string `json:"log_format" gorm:"default:'main'"`                            // 日志格式：main 或 json
 
 	// 日志轮转配置

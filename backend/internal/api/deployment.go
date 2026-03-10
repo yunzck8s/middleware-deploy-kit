@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -708,12 +709,14 @@ func (a *DeploymentAPI) deployPackage(client *ssh.Client, sftpClient *sftp.Clien
 		envVars,
 		scriptPath)
 
-	output, err = a.runCommand(client, executeCmd)
+	output, err = a.runCommandStreaming(client, executeCmd, func(chunk string) {
+		a.appendLogOutput(deployment.ID, *step, chunk)
+	})
 	if err != nil {
-		a.updateLog(deployment.ID, *step, "failed", output, err.Error())
+		a.updateLog(deployment.ID, *step, "failed", strings.TrimSpace(output), err.Error())
 		return fmt.Errorf("脚本执行失败: %v", err)
 	}
-	a.updateLog(deployment.ID, *step, "success", output, "")
+	a.updateLog(deployment.ID, *step, "success", strings.TrimSpace(output), "")
 	(*step)++
 
 	return nil
@@ -826,6 +829,47 @@ func (a *DeploymentAPI) runCommand(client *ssh.Client, cmd string) (string, erro
 	return string(output), err
 }
 
+// runCommandStreaming 执行远程命令并实时回传输出
+func (a *DeploymentAPI) runCommandStreaming(client *ssh.Client, cmd string, onOutput func(chunk string)) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+
+	if err := session.Start(cmd); err != nil {
+		return "", err
+	}
+
+	reader := bufio.NewReader(stdout)
+	var output strings.Builder
+
+	for {
+		chunk, readErr := reader.ReadString('\n')
+		if chunk != "" {
+			output.WriteString(chunk)
+			if onOutput != nil {
+				onOutput(chunk)
+			}
+		}
+
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			return output.String(), readErr
+		}
+	}
+
+	waitErr := session.Wait()
+	return output.String(), waitErr
+}
+
 // uploadContent 上传内容到远程文件
 func (a *DeploymentAPI) uploadContent(sftpClient *sftp.Client, remotePath string, content []byte) error {
 	// 确保目录存在（通过 SFTP）
@@ -878,6 +922,32 @@ func (a *DeploymentAPI) uploadFile(sftpClient *sftp.Client, localPath, remotePat
 	return nil
 }
 
+func (a *DeploymentAPI) emitDeploymentLog(log *models.DeploymentLog) {
+	if log == nil {
+		return
+	}
+
+	exec, ok := deployMgr.Get(log.DeploymentID)
+	if !ok || exec == nil || exec.logChan == nil {
+		return
+	}
+
+	logCopy := *log
+	select {
+	case exec.logChan <- &logCopy:
+	default:
+		logger.Warnf("部署日志推送缓冲已满，跳过实时日志: deployment=%d step=%d", log.DeploymentID, log.Step)
+	}
+}
+
+func (a *DeploymentAPI) getDeploymentLog(deploymentID uint, step int) *models.DeploymentLog {
+	var log models.DeploymentLog
+	if err := db.DB.Where("deployment_id = ? AND step = ?", deploymentID, step).First(&log).Error; err != nil {
+		return nil
+	}
+	return &log
+}
+
 // addLog 添加日志
 func (a *DeploymentAPI) addLog(deploymentID uint, step int, action, output string) {
 	log := &models.DeploymentLog{
@@ -888,6 +958,26 @@ func (a *DeploymentAPI) addLog(deploymentID uint, step int, action, output strin
 		Output:       output,
 	}
 	db.DB.Create(log)
+	a.emitDeploymentLog(log)
+}
+
+func (a *DeploymentAPI) appendLogOutput(deploymentID uint, step int, chunk string) {
+	chunk = strings.TrimRight(chunk, "\r\n")
+	if chunk == "" {
+		return
+	}
+
+	log := a.getDeploymentLog(deploymentID, step)
+	if log == nil {
+		return
+	}
+
+	if log.Output != "" {
+		log.Output += "\n"
+	}
+	log.Output += chunk
+	db.DB.Save(log)
+	a.emitDeploymentLog(log)
 }
 
 // updateLog 更新日志
@@ -899,6 +989,10 @@ func (a *DeploymentAPI) updateLog(deploymentID uint, step int, status, output, e
 			"output":    output,
 			"error_msg": errorMsg,
 		})
+
+	if log := a.getDeploymentLog(deploymentID, step); log != nil {
+		a.emitDeploymentLog(log)
+	}
 }
 
 // Rollback 回滚部署
@@ -1098,22 +1192,19 @@ func (a *DeploymentAPI) StreamLogs(c *gin.Context) {
 		return
 	}
 
-	// 获取执行实例
-	exec, ok := deployMgr.Get(uint(id))
-	if !ok {
-		response.Error(c, http.StatusNotFound, "部署任务未在执行中")
+	var deployment models.Deployment
+	if err := db.DB.First(&deployment, id).Error; err != nil {
+		response.Error(c, http.StatusNotFound, "部署任务不存在")
 		return
 	}
 
-	// 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	// 先发送历史日志
 	var existingLogs []models.DeploymentLog
-	db.DB.Where("deployment_id = ?", id).Order("step ASC").Find(&existingLogs)
+	db.DB.Where("deployment_id = ?", id).Order("created_at ASC, id ASC").Find(&existingLogs)
 
 	for _, log := range existingLogs {
 		data, _ := json.Marshal(log)
@@ -1121,32 +1212,34 @@ func (a *DeploymentAPI) StreamLogs(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
-	// 监听新日志
+	exec, ok := deployMgr.Get(uint(id))
+	if !ok {
+		fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+		c.Writer.Flush()
+		return
+	}
+
 	clientGone := c.Request.Context().Done()
 
 	for {
 		select {
 		case log, ok := <-exec.logChan:
 			if !ok {
-				// 日志通道关闭，部署结束
 				fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
 				c.Writer.Flush()
 				return
 			}
 
-			// 发送日志
 			data, _ := json.Marshal(log)
 			fmt.Fprintf(c.Writer, "event: log\ndata: %s\n\n", data)
 			c.Writer.Flush()
 
 		case <-exec.done:
-			// 部署完成
 			fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
 			c.Writer.Flush()
 			return
 
 		case <-clientGone:
-			// 客户端断开连接
 			logger.Infof("SSE 客户端断开连接: deployment %d", id)
 			return
 		}
