@@ -11,7 +11,7 @@ interface ConfigPreviewProps {
 const ConfigPreview: React.FC<ConfigPreviewProps> = ({ content, loading, onRefresh }) => {
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
-    message.success('已复制到剪贴板');
+    message.success('配置内容已复制到剪贴板');
   };
 
   // Token-based syntax highlighting to avoid cascading regex corruption
@@ -61,11 +61,11 @@ const ConfigPreview: React.FC<ConfigPreviewProps> = ({ content, loading, onRefre
         <div style={{ display: 'flex', gap: 8 }}>
           {onRefresh && (
             <Button icon={<ReloadOutlined />} size="small" onClick={onRefresh} loading={loading}>
-              刷新
+              刷新预览
             </Button>
           )}
           <Button icon={<CopyOutlined />} size="small" onClick={handleCopy}>
-            复制
+            复制配置
           </Button>
         </div>
       </div>
@@ -85,7 +85,7 @@ const ConfigPreview: React.FC<ConfigPreviewProps> = ({ content, loading, onRefre
             margin: 0,
           }}
           dangerouslySetInnerHTML={{
-            __html: content ? highlightNginx(content) : '<span style="color:#6A9955"># 点击"刷新"生成配置预览</span>',
+            __html: content ? highlightNginx(content) : '<span style="color:#6A9955"># 点击“刷新预览”生成配置内容</span>',
           }}
         />
       </Spin>

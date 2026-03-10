@@ -103,8 +103,8 @@ const DeploymentHistoryPage: React.FC = () => {
     const statusMap: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
       pending: { color: 'default', icon: null, text: '待执行' },
       running: { color: 'processing', icon: null, text: '执行中' },
-      success: { color: 'success', icon: <CheckCircleOutlined />, text: '成功' },
-      failed: { color: 'error', icon: <CloseCircleOutlined />, text: '失败' },
+      success: { color: 'success', icon: <CheckCircleOutlined />, text: '已完成' },
+      failed: { color: 'error', icon: <CloseCircleOutlined />, text: '执行失败' },
       cancelled: { color: 'warning', icon: null, text: '已取消' },
     };
     const item = statusMap[status] || { color: 'default', icon: null, text: status };
@@ -229,7 +229,7 @@ const DeploymentHistoryPage: React.FC = () => {
         <Col span={8}>
           <Card>
             <Statistic
-              title="成功次数"
+              title="已完成次数"
               value={stats.success}
               valueStyle={{ color: '#3f8600' }}
               prefix={<CheckCircleOutlined />}
@@ -259,8 +259,8 @@ const DeploymentHistoryPage: React.FC = () => {
               value={statusFilter || undefined}
               onChange={(val) => setStatusFilter(val || '')}
             >
-              <Option value="success">成功</Option>
-              <Option value="failed">失败</Option>
+              <Option value="success">已完成</Option>
+              <Option value="failed">执行失败</Option>
               <Option value="pending">待执行</Option>
               <Option value="running">执行中</Option>
             </Select>
@@ -302,7 +302,7 @@ const DeploymentHistoryPage: React.FC = () => {
 
       {/* 详情弹窗 */}
       <Modal
-        title={`部署详情 - ${currentDeployment?.name || ''}`}
+        title={`部署详情 · ${currentDeployment?.name || ''}`}
         open={logModalVisible}
         onCancel={() => {
           setLogModalVisible(false);

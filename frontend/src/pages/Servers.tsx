@@ -67,7 +67,7 @@ const Servers = () => {
       setServers(response.servers || []);
       setTotal(response.servers?.length || 0);
     } catch (error: any) {
-      message.error(error.message || '加载服务器列表失败');
+      message.error(error.message || '暂时无法加载服务器列表');
     } finally {
       setLoading(false);
     }
@@ -114,10 +114,10 @@ const Servers = () => {
   const handleDelete = async (id: number) => {
     try {
       await deleteServer(id);
-      message.success('删除成功');
+      message.success('服务器已删除');
       loadServers();
     } catch (error: any) {
-      message.error(error.message || '删除失败');
+      message.error(error.message || '删除服务器失败');
     }
   };
 
@@ -126,17 +126,17 @@ const Servers = () => {
       setSubmitting(true);
       if (editingServer) {
         await updateServer(editingServer.id, values);
-        message.success('服务器已更新');
+        message.success('服务器信息已保存');
       } else {
         await createServer(values);
-        message.success('服务器已创建');
+        message.success('服务器已保存，可用于部署和配置应用');
       }
       setDrawerVisible(false);
       form.resetFields();
       setDirectTestResult(null);
       loadServers();
     } catch (error: any) {
-      message.error(error.message || '保存失败');
+      message.error(error.message || '保存服务器失败');
     } finally {
       setSubmitting(false);
     }
@@ -147,13 +147,13 @@ const Servers = () => {
       setTestingId(id);
       const result = await testServerConnection(id);
       if (result.success) {
-        message.success(`连接成功，延迟 ${result.latency_ms}ms`);
+        message.success(`SSH 连接成功，延迟 ${result.latency_ms} ms`);
       } else {
-        message.error(`连接失败：${result.message}`);
+        message.error(`SSH 连接失败：${result.message}`);
       }
       loadServers();
     } catch (error: any) {
-      message.error(error.message || '测试连接失败');
+      message.error(error.message || '暂时无法完成 SSH 连接测试');
     } finally {
       setTestingId(null);
     }
@@ -171,13 +171,13 @@ const Servers = () => {
         form.setFieldsValue({ os_type: result.os_type, os_version: result.os_version });
       }
       if (result.success) {
-        message.success(`连接成功，延迟 ${result.latency_ms}ms`);
+        message.success(`SSH 连接成功，延迟 ${result.latency_ms} ms`);
       } else {
-        message.error(`连接失败：${result.message}`);
+        message.error(`SSH 连接失败：${result.message}`);
       }
     } catch (error: any) {
       if (!error?.errorFields) {
-        message.error(error.message || '测试连接失败');
+        message.error(error.message || '暂时无法完成 SSH 连接测试');
       }
     } finally {
       setTestingDirect(false);
@@ -217,7 +217,7 @@ const Servers = () => {
       title: '系统',
       key: 'os',
       render: (_, record) => (
-        record.os_type ? <StatusBadge status="valid" label={`${record.os_type} ${record.os_version || ''}`.trim()} compact /> : <StatusBadge status="unknown" label="未识别" compact />
+        record.os_type ? <StatusBadge status="valid" label={`${record.os_type} ${record.os_version || ''}`.trim()} compact /> : <StatusBadge status="unknown" label="待识别" compact />
       ),
     },
     {
@@ -233,9 +233,9 @@ const Servers = () => {
         record.last_check_at ? (
           <div>
             <div>{formatDateTime(record.last_check_at, 'YYYY-MM-DD HH:mm')}</div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{record.last_check_msg || '已完成检测'}</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{record.last_check_msg || '最近一次检测已完成'}</div>
           </div>
-        ) : <span style={{ color: 'var(--text-secondary)' }}>从未检测</span>
+        ) : <span style={{ color: 'var(--text-secondary)' }}>尚未检测</span>
       ),
     },
     {
@@ -244,21 +244,22 @@ const Servers = () => {
       width: 168,
       render: (_, record) => (
         <Space>
-          <Tooltip title="测试连接">
+          <Tooltip title="测试这台服务器的 SSH 连接">
             <Button
               type="text"
               icon={testingId === record.id ? <Spin size="small" /> : <ApiOutlined />}
               size="small"
               onClick={() => handleTestConnection(record.id)}
               disabled={testingId !== null}
+              aria-label="测试 SSH 连接"
             />
           </Tooltip>
-          <Tooltip title="编辑">
-            <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} />
+          <Tooltip title="编辑这台服务器">
+            <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(record)} aria-label="编辑服务器" />
           </Tooltip>
-          <Popconfirm title="确定要删除这个服务器吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-            <Tooltip title="删除">
-              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          <Popconfirm title={`删除服务器“${record.name}”后，不会自动删除已有部署记录。确定删除吗？`} onConfirm={() => handleDelete(record.id)} okText="删除" cancelText="取消">
+            <Tooltip title="删除这台服务器">
+              <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除服务器" />
             </Tooltip>
           </Popconfirm>
         </Space>
@@ -270,12 +271,12 @@ const Servers = () => {
     <div className="page-stack">
       <PageHeader
         eyebrow="服务器资源管理"
-        title="服务器资源视图"
-        subtitle="追踪目标节点的连通性、系统信息和 SSH 接入方式，为部署任务提供可信执行目标。"
+        title="服务器管理"
+        subtitle="维护目标服务器、SSH 凭据和连通性，为部署和配置应用提供执行目标。"
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={loadServers}>刷新</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>添加服务器</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增服务器</Button>
           </ActionGroup>
         )}
       />
@@ -287,7 +288,7 @@ const Servers = () => {
         <MetricTile label="系统识别率" value={`${total ? Math.round((autoDetectedOs / total) * 100) : 0}%`} hint="通过连接测试自动填充的 OS 信息" icon={<SearchOutlined />} tone="info" loading={loading} />
       </div>
 
-      <SectionCard title="服务器清单" subtitle="按状态、认证方式和上次检测结果查看目标节点。" className="ops-table">
+      <SectionCard title="服务器列表" subtitle="按状态、认证方式和最近一次检测结果筛选目标服务器。" className="ops-table">
         <FilterToolbar
           left={(
             <>
@@ -312,11 +313,11 @@ const Servers = () => {
               </Select>
             </>
           )}
-          right={<span className="summary-card__hint">创建或编辑服务器时可直接在抽屉中测试连接</span>}
+          right={<span className="summary-card__hint">新增或编辑服务器时，可先测试 SSH 连接再保存</span>}
         />
 
         {filteredServers.length === 0 && !loading ? (
-          <EmptyState title="还没有服务器资源" description="先录入目标服务器的 SSH 信息，再开始 Nginx 配置应用或离线包部署。" action={<Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>添加第一台服务器</Button>} />
+          <EmptyState title="还没有服务器资源" description="先录入一台可连接的目标服务器，再开始配置应用或离线包部署。" action={<Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增第一台服务器</Button>} />
         ) : (
           <Table
             columns={columns}
@@ -340,7 +341,7 @@ const Servers = () => {
       </SectionCard>
 
       <Drawer
-        title={editingServer ? '编辑服务器' : '添加服务器'}
+        title={editingServer ? '编辑服务器' : '新增服务器'}
         open={drawerVisible}
         onClose={() => {
           setDrawerVisible(false);
@@ -350,15 +351,15 @@ const Servers = () => {
         width={620}
         extra={(
           <ActionGroup>
-            <Button onClick={handleTestDirect} loading={testingDirect}>测试连接</Button>
-            <Button type="primary" onClick={() => form.submit()} loading={submitting}>{editingServer ? '保存变更' : '创建服务器'}</Button>
+            <Button onClick={handleTestDirect} loading={testingDirect}>测试 SSH 连接</Button>
+            <Button type="primary" onClick={() => form.submit()} loading={submitting}>{editingServer ? '保存服务器' : '保存服务器'}</Button>
           </ActionGroup>
         )}
       >
         <div className="page-stack" style={{ gap: 16 }}>
           {directTestResult && (
             <div className="summary-card">
-              <div className="summary-card__label">最近一次测试</div>
+              <div className="summary-card__label">最近一次连通性测试</div>
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <StatusBadge status={directTestResult.success ? 'success' : 'failed'} compact />
                 <span className="summary-card__hint">延迟 {directTestResult.latency_ms} ms</span>
@@ -375,8 +376,8 @@ const Servers = () => {
               <div className="config-section-card__title">连接目标</div>
               <div className="operation-grid">
                 <div className="operation-grid__main">
-                  <Form.Item label="服务器名称" name="name" rules={[{ required: true, message: '请输入服务器名称' }]}>
-                    <Input placeholder="例如：Prod Edge 01" />
+                  <Form.Item label="服务器名称" name="name" rules={[{ required: true, message: '请输入服务器名称' }]} extra="建议使用环境 + 角色 + 编号的命名方式">
+                    <Input placeholder="例如：prod-edge-01" />
                   </Form.Item>
                 </div>
                 <div className="operation-grid__aside">
@@ -385,8 +386,8 @@ const Servers = () => {
                   </Form.Item>
                 </div>
               </div>
-              <Form.Item label="主机地址" name="host" rules={[{ required: true, message: '请输入主机地址' }]}>
-                <Input placeholder="IP 地址或域名" />
+              <Form.Item label="主机地址或域名" name="host" rules={[{ required: true, message: '请输入主机地址或域名' }]} extra="支持 IP 地址或可解析的域名">
+                <Input placeholder="例如：10.0.0.12 或 edge.example.com" />
               </Form.Item>
             </div>
 
@@ -394,7 +395,7 @@ const Servers = () => {
               <div className="config-section-card__title">SSH 认证</div>
               <div className="operation-grid">
                 <div className="operation-grid__main">
-                  <Form.Item label="用户名" name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+                  <Form.Item label="SSH 用户名" name="username" rules={[{ required: true, message: '请输入 SSH 用户名' }]}>
                     <Input placeholder="例如：root" />
                   </Form.Item>
                 </div>
@@ -414,9 +415,9 @@ const Servers = () => {
                     label="密码"
                     name="password"
                     rules={[{ required: !editingServer, message: '请输入密码' }]}
-                    extra={editingServer ? '留空表示不修改密码' : undefined}
+                    extra={editingServer ? '编辑时留空则保留当前密码' : '请输入目标服务器的 SSH 登录密码'}
                   >
-                    <Input.Password placeholder="SSH 密码" />
+                    <Input.Password placeholder="请输入 SSH 登录密码" />
                   </Form.Item>
                 ) : (
                   <>
@@ -424,12 +425,12 @@ const Servers = () => {
                       label="私钥"
                       name="private_key"
                       rules={[{ required: !editingServer, message: '请输入私钥' }]}
-                      extra={editingServer ? '留空表示不修改私钥' : '粘贴完整私钥内容'}
+                      extra={editingServer ? '编辑时留空则保留当前私钥' : '粘贴完整私钥内容，包含 BEGIN / END 标记'}
                     >
-                      <TextArea rows={5} placeholder="-----BEGIN RSA PRIVATE KEY-----" />
+                      <TextArea rows={5} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
                     </Form.Item>
                     <Form.Item label="私钥密码" name="passphrase">
-                      <Input.Password placeholder="如果私钥带密码，请输入" />
+                      <Input.Password placeholder="如果私钥设置了密码，请填写" />
                     </Form.Item>
                   </>
                 )}
@@ -441,7 +442,7 @@ const Servers = () => {
               <div className="operation-grid">
                 <div className="operation-grid__main">
                   <Form.Item label="操作系统类型" name="os_type">
-                    <Select placeholder="可通过测试连接自动识别" allowClear>
+                    <Select placeholder="如未自动识别，可手动选择" allowClear>
                       <Option value="rocky">Rocky Linux</Option>
                       <Option value="centos">CentOS</Option>
                       <Option value="openEuler">OpenEuler</Option>
@@ -458,7 +459,7 @@ const Servers = () => {
                 </div>
               </div>
               <Form.Item label="描述" name="description">
-                <TextArea rows={3} placeholder="记录用途、网络区位或备注信息" />
+                <TextArea rows={3} placeholder="例如：生产边缘节点，位于华东机房" />
               </Form.Item>
             </div>
           </Form>

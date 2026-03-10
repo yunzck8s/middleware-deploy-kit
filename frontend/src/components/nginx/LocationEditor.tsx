@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm } from 'antd';
+import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NginxLocation } from '../../types';
 
@@ -85,14 +85,14 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 600, fontSize: 14 }}>Location 规则</span>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>Location 路由规则</span>
         <Button type="primary" icon={<PlusOutlined />} size="small" onClick={handleAdd}>
           添加规则
         </Button>
       </div>
 
       {locations.length === 0 ? (
-        <Empty description="暂无 Location 规则" style={{ padding: 24 }} />
+        <Empty description="还没有 Location 路由" style={{ padding: 24 }} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {locations.map((loc, index) => (
@@ -111,9 +111,13 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                   {getHandlerSummary(loc)}
                 </span>
                 <Space size="small">
-                  <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(index)} />
-                  <Popconfirm title="确定删除？" onConfirm={() => handleDelete(index)}>
-                    <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                  <Tooltip title="编辑这条路由规则">
+                    <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(index)} aria-label="编辑路由规则" />
+                  </Tooltip>
+                  <Popconfirm title={`删除路径“${loc.path}”后，这条规则将不再生效。确定删除吗？`} onConfirm={() => handleDelete(index)} okText="删除" cancelText="取消">
+                    <Tooltip title="删除这条路由规则">
+                      <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除路由规则" />
+                    </Tooltip>
                   </Popconfirm>
                 </Space>
               </div>
@@ -123,7 +127,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
       )}
 
       <Modal
-        title={editingIndex !== null ? '编辑 Location' : '添加 Location'}
+        title={editingIndex !== null ? '编辑 Location 路由' : '新增 Location 路由'}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
@@ -132,8 +136,8 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item label="路径" name="path" rules={[{ required: true, message: '请输入路径' }]}>
-                <Input placeholder="/ 或 /api 或 /static" style={{ fontFamily: 'var(--font-mono)' }} />
+              <Form.Item label="匹配路径" name="path" rules={[{ required: true, message: '请输入匹配路径' }]} extra="例如 /、/api 或 /static">
+                <Input placeholder="例如：/、/api、/static" style={{ fontFamily: 'var(--font-mono)' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -148,7 +152,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
             </Col>
           </Row>
 
-          <Form.Item label="处理类型" name="handler_type">
+          <Form.Item label="处理方式" name="handler_type">
             <Select>
               <Option value="static">静态文件</Option>
               <Option value="proxy">反向代理</Option>
@@ -163,10 +167,10 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
               if (type === 'static') {
                 return (
                   <>
-                    <Form.Item label="Root 目录" name="root">
+                    <Form.Item label="静态文件目录" name="root">
                       <Input placeholder="/usr/share/nginx/html" />
                     </Form.Item>
-                    <Form.Item label="try_files" name="try_files">
+                    <Form.Item label="try_files" name="try_files" extra="按顺序尝试匹配这些文件或路径">
                       <Input placeholder="$uri $uri/ /index.html" style={{ fontFamily: 'var(--font-mono)' }} />
                     </Form.Item>
                   </>
@@ -175,10 +179,10 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
               if (type === 'proxy') {
                 return (
                   <>
-                    <Form.Item label="Proxy Pass" name="proxy_pass" rules={[{ required: true, message: '请输入代理地址' }]}>
+                    <Form.Item label="代理目标地址" name="proxy_pass" rules={[{ required: true, message: '请输入代理目标地址' }]}>
                       <Input placeholder="http://127.0.0.1:3000 或 http://upstream_name" style={{ fontFamily: 'var(--font-mono)' }} />
                     </Form.Item>
-                    <Form.Item label="Proxy Headers (JSON)" name="proxy_set_headers" extra="JSON 格式，如：{&quot;Host&quot;: &quot;$host&quot;, &quot;X-Real-IP&quot;: &quot;$remote_addr&quot;}">
+                    <Form.Item label="转发请求头（JSON）" name="proxy_set_headers" extra="按 JSON 填写要附加的请求头，例如 {&quot;Host&quot;: &quot;$host&quot;}">
                       <Input.TextArea rows={3} placeholder='{"Host": "$host", "X-Real-IP": "$remote_addr"}' style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
                     </Form.Item>
                   </>
@@ -188,7 +192,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                 return (
                   <Row gutter={16}>
                     <Col span={16}>
-                      <Form.Item label="重定向 URL" name="redirect_url" rules={[{ required: true, message: '请输入 URL' }]}>
+                      <Form.Item label="跳转目标 URL" name="redirect_url" rules={[{ required: true, message: '请输入跳转目标地址' }]}>
                         <Input placeholder="https://example.com" />
                       </Form.Item>
                     </Col>
@@ -215,7 +219,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                     </Col>
                     <Col span={16}>
                       <Form.Item label="返回内容" name="return_body">
-                        <Input.TextArea rows={2} placeholder="Response body" />
+                        <Input.TextArea rows={2} placeholder="返回内容（可选）" />
                       </Form.Item>
                     </Col>
                   </Row>

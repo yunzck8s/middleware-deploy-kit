@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm, Switch, Progress } from 'antd';
+import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm, Switch, Progress, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NginxUpstream, UpstreamServer } from '../../types';
 
@@ -11,10 +11,10 @@ interface UpstreamEditorProps {
 }
 
 const lbLabels: Record<string, string> = {
-  round_robin: 'Round Robin',
-  least_conn: 'Least Connections',
-  ip_hash: 'IP Hash',
-  hash: 'Hash',
+  round_robin: '轮询',
+  least_conn: '最少连接',
+  ip_hash: 'IP 哈希',
+  hash: '自定义哈希',
 };
 
 const parseServers = (serversStr: string): UpstreamServer[] => {
@@ -113,7 +113,9 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{srvs.length} 个后端</span>
                   </div>
                   <Space size="small">
-                    <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(index)} />
+                    <Tooltip title="编辑这个 Upstream 集群">
+                    <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(index)} aria-label="编辑 Upstream 集群" />
+                  </Tooltip>
                     <Popconfirm title="确定删除？" onConfirm={() => handleDelete(index)}>
                       <Button type="text" danger icon={<DeleteOutlined />} size="small" />
                     </Popconfirm>
@@ -131,8 +133,8 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
                       <span style={{ fontSize: 11, color: 'var(--text-tertiary)', minWidth: 40, textAlign: 'right' }}>
                         w={srv.weight || 1}
                       </span>
-                      {srv.backup && <Tag color="orange" style={{ margin: 0, fontSize: 10 }}>backup</Tag>}
-                      {srv.down && <Tag color="red" style={{ margin: 0, fontSize: 10 }}>down</Tag>}
+                      {srv.backup && <Tag color="orange" style={{ margin: 0, fontSize: 10 }}>备用</Tag>}
+                      {srv.down && <Tag color="red" style={{ margin: 0, fontSize: 10 }}>下线</Tag>}
                     </div>
                   );
                 })}
@@ -143,7 +145,7 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
       )}
 
       <Modal
-        title={editingIndex !== null ? '编辑 Upstream' : '添加 Upstream'}
+        title={editingIndex !== null ? '编辑 Upstream 集群' : '新增 Upstream 集群'}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
@@ -152,24 +154,24 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
         <Form form={form} layout="vertical">
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入 upstream 名称' }]}>
+              <Form.Item label="集群名称" name="name" rules={[{ required: true, message: '请输入 Upstream 集群名称' }]} extra="建议使用能体现业务用途的名字">
                 <Input placeholder="backend_servers" style={{ fontFamily: 'var(--font-mono)' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="负载均衡算法" name="load_balance">
+              <Form.Item label="负载均衡策略" name="load_balance">
                 <Select>
-                  <Option value="round_robin">Round Robin</Option>
-                  <Option value="least_conn">Least Connections</Option>
-                  <Option value="ip_hash">IP Hash</Option>
-                  <Option value="hash">Hash</Option>
+                  <Option value="round_robin">轮询（Round Robin）</Option>
+                  <Option value="least_conn">最少连接</Option>
+                  <Option value="ip_hash">按 IP 哈希</Option>
+                  <Option value="hash">自定义哈希</Option>
                 </Select>
               </Form.Item>
             </Col>
           </Row>
         </Form>
 
-        <div style={{ marginTop: 8, marginBottom: 8, fontWeight: 500, fontSize: 13 }}>后端服务器</div>
+        <div style={{ marginTop: 8, marginBottom: 8, fontWeight: 500, fontSize: 13 }}>上游节点</div>
         {servers.map((srv, index) => (
           <Card key={index} size="small" style={{ marginBottom: 8, background: 'var(--bg-tertiary)' }}>
             <Row gutter={8} align="middle">
@@ -177,7 +179,7 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
                 <Input
                   value={srv.address}
                   onChange={(e) => updateServer(index, 'address', e.target.value)}
-                  placeholder="192.168.1.10"
+                  placeholder="例如：192.168.1.10"
                   size="small"
                   style={{ fontFamily: 'var(--font-mono)' }}
                 />
@@ -206,8 +208,8 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
                 <Switch
                   checked={srv.backup}
                   onChange={(v) => updateServer(index, 'backup', v)}
-                  checkedChildren="backup"
-                  unCheckedChildren="主"
+                  checkedChildren="备用"
+                  unCheckedChildren="主用"
                   size="small"
                 />
               </Col>
@@ -215,26 +217,29 @@ const UpstreamEditor: React.FC<UpstreamEditorProps> = ({ upstreams, onChange }) 
                 <Switch
                   checked={srv.down}
                   onChange={(v) => updateServer(index, 'down', v)}
-                  checkedChildren="down"
-                  unCheckedChildren="up"
+                  checkedChildren="下线"
+                  unCheckedChildren="启用"
                   size="small"
                 />
               </Col>
               <Col span={2}>
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  size="small"
-                  onClick={() => removeServer(index)}
-                  disabled={servers.length <= 1}
-                />
+                <Tooltip title="删除这个上游节点">
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    size="small"
+                    onClick={() => removeServer(index)}
+                    disabled={servers.length <= 1}
+                    aria-label="删除上游节点"
+                  />
+                </Tooltip>
               </Col>
             </Row>
           </Card>
         ))}
         <Button type="dashed" block onClick={addServer} icon={<PlusOutlined />} size="small">
-          添加服务器
+          添加上游节点
         </Button>
       </Modal>
     </div>

@@ -18,14 +18,16 @@ import {
   SafetyCertificateOutlined,
   GlobalOutlined,
   ClusterOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import {
   getNginxConfigList,
   deleteNginxConfig,
   generateNginxConfig,
 } from '../api/nginx';
-import type { NginxConfig } from '../types';
+import type { NginxConfig, NginxConfigApply } from '../types';
 import ApplyConfigModal from '../components/nginx/ApplyConfigModal';
+import ApplyHistoryDrawer from '../components/nginx/ApplyHistoryDrawer';
 import ConfigEditor from '../components/nginx/ConfigEditor';
 import ConfigPreview from '../components/nginx/ConfigPreview';
 import PageHeader from '../components/common/PageHeader';
@@ -43,6 +45,9 @@ const NginxConfigPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [applyModalVisible, setApplyModalVisible] = useState(false);
   const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
+  const [applyHistoryVisible, setApplyHistoryVisible] = useState(false);
+  const [applyHistoryConfigId, setApplyHistoryConfigId] = useState<number | null>(null);
+  const [selectedApplyId, setSelectedApplyId] = useState<number | null>(null);
   const [editorMode, setEditorMode] = useState<'list' | 'edit' | 'create'>('list');
   const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -57,7 +62,7 @@ const NginxConfigPage: React.FC = () => {
       setConfigs(response.configs || []);
       setTotal(response.total || 0);
     } catch (error: any) {
-      message.error(error.message || '加载配置列表失败');
+      message.error(error.message || '暂时无法加载配置列表');
     } finally {
       setLoading(false);
     }
@@ -86,10 +91,10 @@ const NginxConfigPage: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       await deleteNginxConfig(id);
-      message.success('删除成功');
+      message.success('配置已删除');
       loadConfigs();
     } catch (error: any) {
-      message.error(error.message || '删除失败');
+      message.error(error.message || '删除配置失败');
     }
   };
 
@@ -100,7 +105,7 @@ const NginxConfigPage: React.FC = () => {
       setPreviewContent(result.content);
       setPreviewVisible(true);
     } catch (error: any) {
-      message.error(error.message || '生成配置失败');
+      message.error(error.message || '生成预览失败');
     } finally {
       setPreviewingId(null);
     }
@@ -109,6 +114,17 @@ const NginxConfigPage: React.FC = () => {
   const handleApplyConfig = (id: number) => {
     setSelectedConfigId(id);
     setApplyModalVisible(true);
+  };
+
+  const handleOpenApplyHistory = (configId: number, applyId?: number | null) => {
+    setApplyHistoryConfigId(configId);
+    setSelectedApplyId(applyId ?? null);
+    setApplyHistoryVisible(true);
+  };
+
+  const handleApplySuccess = (createdApply: NginxConfigApply) => {
+    void loadConfigs();
+    handleOpenApplyHistory(createdApply.nginx_config_id, createdApply.id);
   };
 
   if (editorMode !== 'list') {
@@ -129,8 +145,8 @@ const NginxConfigPage: React.FC = () => {
     <div className="page-stack">
       <PageHeader
         eyebrow="Nginx 配置管理"
-        title="配置编排中心"
-        subtitle="用资源卡片快速定位配置，用工作台模式进入编辑、预览和应用流程。"
+        title="配置管理"
+        subtitle="按名称、状态和域名快速定位配置，并直接进入预览、编辑或应用流程。"
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={loadConfigs}>刷新</Button>
@@ -148,7 +164,7 @@ const NginxConfigPage: React.FC = () => {
         <MetricTile label="HTTPS 配置" value={summary.https} hint="已开启 HTTPS 监听的配置" icon={<SafetyCertificateOutlined />} tone="info" loading={loading} />
       </div>
 
-      <SectionCard title="配置资源" subtitle="突出名称、状态、域名、HTTPS 能力与应用入口。">
+      <SectionCard title="配置列表" subtitle="按名称、状态、域名和 HTTPS 能力浏览配置，并直接进入预览、编辑或应用。">
         <FilterToolbar
           left={(
             <Input
@@ -160,7 +176,7 @@ const NginxConfigPage: React.FC = () => {
               allowClear
             />
           )}
-          right={<span className="summary-card__hint">预览、应用与编辑按主流程排序</span>}
+          right={<span className="summary-card__hint">建议按“预览 → 应用到服务器 → 编辑”的顺序操作</span>}
         />
 
         <div className="section-card__body">
@@ -169,8 +185,8 @@ const NginxConfigPage: React.FC = () => {
           ) : filteredConfigs.length === 0 ? (
             <EmptyState
               title="还没有 Nginx 配置"
-              description="创建第一个配置后，你可以在 IDE 风格工作台里编辑 Server、Location、TLS、缓存和安全规则。"
-              action={<Button type="primary" icon={<PlusOutlined />} onClick={() => setEditorMode('create')}>创建第一个配置</Button>}
+              description="新建第一个配置后，你可以在工作台里编辑 Server、Location、TLS、缓存和安全规则。"
+              action={<Button type="primary" icon={<PlusOutlined />} onClick={() => setEditorMode('create')}>新建第一个配置</Button>}
             />
           ) : (
             <div className="resource-card-grid">
@@ -181,7 +197,7 @@ const NginxConfigPage: React.FC = () => {
                     <div className="resource-card__header">
                       <div>
                         <div className="resource-card__title">{config.name}</div>
-                        <div className="resource-card__description">{config.description || '未填写配置描述'}</div>
+                        <div className="resource-card__description">{config.description || '未填写说明'}</div>
                       </div>
                       <StatusBadge status={config.status} compact />
                     </div>
@@ -190,7 +206,7 @@ const NginxConfigPage: React.FC = () => {
                       {config.enable_http && <StatusBadge status="valid" label={`HTTP ${config.http_port}`} compact />}
                       {config.enable_https && <StatusBadge status="valid" label={`HTTPS ${config.https_port}`} compact />}
                       <StatusBadge status="default" label={config.server_name || '_'} compact />
-                      {locationCount > 0 && <StatusBadge status="info" label={`${locationCount} Locations`} compact />}
+                      {locationCount > 0 && <StatusBadge status="info" label={`${locationCount} 条路由`} compact />}
                     </div>
 
                     <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
@@ -203,17 +219,20 @@ const NginxConfigPage: React.FC = () => {
                     <div className="resource-card__footer">
                       <ActionGroup>
                         <Button type="text" icon={<EyeOutlined />} loading={previewingId === config.id} onClick={() => handleViewGenerated(config.id)}>
-                          预览
+                          查看预览
                         </Button>
                         <Button type="text" icon={<SendOutlined />} onClick={() => handleApplyConfig(config.id)}>
-                          应用
+                          应用到服务器
+                        </Button>
+                        <Button type="text" icon={<HistoryOutlined />} onClick={() => handleOpenApplyHistory(config.id)}>
+                          应用记录
                         </Button>
                         <Button type="text" icon={<EditOutlined />} onClick={() => { setEditingConfigId(config.id); setEditorMode('edit'); }}>
-                          编辑
+                          继续编辑
                         </Button>
                       </ActionGroup>
-                      <Popconfirm title="确定要删除这个配置吗？" onConfirm={() => handleDelete(config.id)} okText="确定" cancelText="取消">
-                        <Button type="text" danger icon={<DeleteOutlined />}>删除</Button>
+                      <Popconfirm title={`删除配置“${config.name}”后，将不能再直接应用到服务器。确定删除吗？`} onConfirm={() => handleDelete(config.id)} okText="删除" cancelText="取消">
+                        <Button type="text" danger icon={<DeleteOutlined />}>删除配置</Button>
                       </Popconfirm>
                     </div>
                   </div>
@@ -224,7 +243,7 @@ const NginxConfigPage: React.FC = () => {
         </div>
       </SectionCard>
 
-      <Drawer title="生成配置预览" open={previewVisible} onClose={() => setPreviewVisible(false)} width={860}>
+      <Drawer title="配置预览" open={previewVisible} onClose={() => setPreviewVisible(false)} width={860}>
         <ConfigPreview content={previewContent} />
       </Drawer>
 
@@ -233,9 +252,20 @@ const NginxConfigPage: React.FC = () => {
           configId={selectedConfigId}
           open={applyModalVisible}
           onClose={() => setApplyModalVisible(false)}
-          onSuccess={() => loadConfigs()}
+          onSuccess={handleApplySuccess}
         />
       )}
+
+      <ApplyHistoryDrawer
+        configId={applyHistoryConfigId}
+        initialApplyId={selectedApplyId}
+        open={applyHistoryVisible}
+        onClose={() => {
+          setApplyHistoryVisible(false);
+          setApplyHistoryConfigId(null);
+          setSelectedApplyId(null);
+        }}
+      />
     </div>
   );
 };

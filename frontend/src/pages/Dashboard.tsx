@@ -41,16 +41,16 @@ const Dashboard = () => {
   return (
     <div className="page-stack dashboard-page">
       <PageHeader
-        eyebrow="Nginx 控制中心"
-        title="概览与实时态势"
-        subtitle="聚合节点状态、可用资产、部署趋势和证书风险，让常用操作在一个屏内完成。"
+        eyebrow="控制台总览"
+        title="控制台总览"
+        subtitle="把服务器状态、可用资产、部署趋势和证书风险放在同一屏，方便你快速判断下一步。"
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
               刷新数据
             </Button>
             <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>
-              新建部署
+              新建部署任务
             </Button>
           </ActionGroup>
         )}
@@ -60,7 +60,7 @@ const Dashboard = () => {
         <MetricTile
           label="在线服务器"
           value={`${stats?.serversOnline || 0}/${stats?.serversTotal || 0}`}
-          hint="已检测到在线节点占比"
+          hint="当前在线服务器占全部服务器的比例"
           icon={<CloudServerOutlined />}
           tone="success"
           loading={loading}
@@ -69,7 +69,7 @@ const Dashboard = () => {
         <MetricTile
           label="可用离线包"
           value={stats?.packagesCount || 0}
-          hint="当前可直接部署的 Nginx 包"
+          hint="当前可直接用于部署的 Nginx 离线包"
           icon={<InboxOutlined />}
           tone="info"
           loading={loading}
@@ -78,16 +78,16 @@ const Dashboard = () => {
         <MetricTile
           label="有效证书"
           value={stats?.certificatesTotal || 0}
-          hint={`${stats?.certificatesExpiringSoon || 0} 个将在 30 天内到期`}
+          hint={`${stats?.certificatesExpiringSoon || 0} 个证书将在 30 天内到期`}
           icon={<SafetyCertificateOutlined />}
           tone={stats?.certificatesExpiringSoon ? 'warning' : 'success'}
           loading={loading}
           onClick={() => navigate('/middleware/nginx/certificates')}
         />
         <MetricTile
-          label="配置资源"
+          label="配置数量"
           value={stats?.configsTotal || 0}
-          hint="已保存的 Nginx 配置模板数量"
+          hint="当前已保存的 Nginx 配置数量"
           icon={<SettingOutlined />}
           tone="default"
           loading={loading}
@@ -96,7 +96,7 @@ const Dashboard = () => {
         <MetricTile
           label="运行中部署"
           value={stats?.deploymentsRunning || 0}
-          hint={`${stats?.deploymentsTotal || 0} 个任务已记录`}
+          hint={`累计记录 ${stats?.deploymentsTotal || 0} 个部署任务`}
           icon={<RocketOutlined />}
           tone={stats?.deploymentsRunning ? 'warning' : 'default'}
           loading={loading}
@@ -105,7 +105,7 @@ const Dashboard = () => {
         <MetricTile
           label="近期成功率"
           value={`${stats?.successRate || 0}%`}
-          hint="按当前任务历史自动计算"
+          hint="根据当前部署历史自动计算"
           icon={<ArrowRightOutlined />}
           tone={(stats?.successRate || 0) >= 90 ? 'success' : (stats?.successRate || 0) >= 70 ? 'warning' : 'danger'}
           loading={loading}
@@ -116,8 +116,8 @@ const Dashboard = () => {
         <div className="page-stack">
           <SectionCard
             title="部署趋势"
-            subtitle="过去 7 天内成功与失败任务的变化情况。"
-            extra={<StatusBadge status={(stats?.deploymentsRunning || 0) > 0 ? 'running' : 'success'} label={(stats?.deploymentsRunning || 0) > 0 ? '正在追踪中' : '状态稳定'} compact />}
+            subtitle="查看过去 7 天成功和失败任务的变化，快速判断是否需要介入。"
+            extra={<StatusBadge status={(stats?.deploymentsRunning || 0) > 0 ? 'running' : 'success'} label={(stats?.deploymentsRunning || 0) > 0 ? '有任务执行中' : '当前无运行中任务'} compact />}
           >
             {loading ? (
               <div style={{ padding: 24 }}><Skeleton active paragraph={{ rows: 8 }} /></div>
@@ -137,14 +137,14 @@ const Dashboard = () => {
 
           <SectionCard
             title="最近部署"
-            subtitle="最近创建的任务，按时间倒序排列。"
+            subtitle="按时间倒序查看最近创建的任务，优先关注刚开始或刚结束的任务。"
             extra={<Button type="link" icon={<ArrowRightOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>查看全部</Button>}
           >
             <div style={{ padding: 16 }}>
               {loading ? (
                 <Skeleton active paragraph={{ rows: 6 }} />
               ) : !stats?.recentDeployments?.length ? (
-                <EmptyState title="还没有部署记录" description="创建一个新的 Nginx 离线包或证书部署任务后，这里会显示最近活动。" />
+                <EmptyState title="还没有部署记录" description="新建部署后，这里会显示最近的执行记录和状态变化。" />
               ) : (
                 <List
                   itemLayout="vertical"
@@ -159,17 +159,17 @@ const Dashboard = () => {
                         }}
                         actions={[
                           <Button key="view" type="link" onClick={() => navigate('/middleware/nginx/deployments')}>
-                            查看任务
+                            查看任务详情
                           </Button>,
                         ]}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 16 }}>{item.name}</div>
-                            <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>{item.description || '未填写任务描述'}</div>
+                            <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>{item.description || '未填写说明'}</div>
                             <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                               <StatusBadge status={item.status} label={statusMeta.label} compact />
-                              <span className="summary-card__hint">{item.server?.name || '未关联服务器'}</span>
+                              <span className="summary-card__hint">{item.server?.name || '未指定服务器'}</span>
                               <span className="summary-card__hint">{formatRelativeTime(item.created_at)}</span>
                             </div>
                           </div>
@@ -212,23 +212,22 @@ const Dashboard = () => {
               <div className="summary-card__hint">
                 {(stats?.certificatesExpiringSoon || 0) > 0
                   ? '建议优先检查域名映射和证书替换计划。'
-                  : '当前没有紧急证书到期风险。'}
+                  : '当前没有需要立即处理的到期风险。'}
               </div>
             </div>
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-secondary)' }}>
               <WarningOutlined style={{ color: 'var(--color-warning)' }} />
-              到期风险依据当前证书有效期自动计算。
+              到期风险根据当前证书有效期自动计算。
             </div>
           </div>
         </SectionCard>
 
-        <SectionCard title="快捷入口" subtitle="以最短路径进入 Nginx 关键工作流。">
+        <SectionCard title="快捷操作" subtitle="快速进入 Nginx 最常用的工作流。">
           <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {quickActions.map((action) => (
               <Button
                 key={action.path}
                 icon={action.icon}
-                size="large"
                 block
                 onClick={() => navigate(action.path)}
               >

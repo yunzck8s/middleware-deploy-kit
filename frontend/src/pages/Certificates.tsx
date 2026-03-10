@@ -10,6 +10,7 @@ import {
   Popconfirm,
   Space,
   Progress,
+  Tooltip,
 } from 'antd';
 import {
   UploadOutlined,
@@ -59,7 +60,7 @@ const Certificates: React.FC = () => {
       setCertificates(response.certificates || []);
       setTotal(response.certificates?.length || 0);
     } catch (error: any) {
-      message.error(error.message || '加载证书列表失败');
+      message.error(error.message || '暂时无法加载证书列表');
     } finally {
       setLoading(false);
     }
@@ -97,7 +98,7 @@ const Certificates: React.FC = () => {
 
   const handleUpload = async (values: { name: string; domain?: string }) => {
     if (!certFile || !keyFile) {
-      message.error('请上传证书文件和密钥文件');
+      message.error('请先选择证书文件和私钥文件');
       return;
     }
 
@@ -109,14 +110,14 @@ const Certificates: React.FC = () => {
         cert_file: certFile.originFileObj as File,
         key_file: keyFile.originFileObj as File,
       });
-      message.success('证书上传成功');
+      message.success('证书已上传，可在 HTTPS 配置中选择');
       setUploadVisible(false);
       form.resetFields();
       setCertFile(null);
       setKeyFile(null);
       loadCertificates();
     } catch (error: any) {
-      message.error(error.message || '上传失败');
+      message.error(error.message || '证书上传失败');
     } finally {
       setUploading(false);
     }
@@ -125,10 +126,10 @@ const Certificates: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       await deleteCertificate(id);
-      message.success('删除成功');
+      message.success('证书已删除');
       loadCertificates();
     } catch (error: any) {
-      message.error(error.message || '删除失败');
+      message.error(error.message || '删除证书失败');
     }
   };
 
@@ -143,9 +144,9 @@ const Certificates: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      message.success('下载成功');
+      message.success(`已下载 ${name}.${type === 'cert' ? 'crt' : 'key'}`);
     } catch (error: any) {
-      message.error(error.message || '下载失败');
+      message.error(error.message || '下载证书文件失败');
     }
   };
 
@@ -179,7 +180,7 @@ const Certificates: React.FC = () => {
         return (
           <div>
             <div style={{ marginBottom: 8 }}>
-              <StatusBadge status={status} label={status === 'valid' ? `有效 ${days} 天` : status === 'expiring' ? `${days} 天后到期` : '已过期'} compact />
+              <StatusBadge status={status} label={status === 'valid' ? `剩余 ${days} 天` : status === 'expiring' ? `${days} 天后到期` : '已过期'} compact />
             </div>
             <Progress percent={progress} size="small" showInfo={false} strokeColor={status === 'valid' ? '#22C55E' : status === 'expiring' ? '#F59E0B' : '#EF4444'} />
           </div>
@@ -209,10 +210,14 @@ const Certificates: React.FC = () => {
       width: 160,
       render: (_, record) => (
         <Space>
-          <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'cert', record.name)} />
-          <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'key', record.name)} />
-          <Popconfirm title="确定要删除这个证书吗？" onConfirm={() => handleDelete(record.id)} okText="确定" cancelText="取消">
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          <Tooltip title="下载证书文件">
+            <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'cert', record.name)} aria-label="下载证书文件" />
+          </Tooltip>
+          <Tooltip title="下载私钥文件">
+            <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'key', record.name)} aria-label="下载私钥文件" />
+          </Tooltip>
+          <Popconfirm title={`删除证书“${record.name}”后，已关联的配置不会自动替换。确定删除吗？`} onConfirm={() => handleDelete(record.id)} okText="删除" cancelText="取消">
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除证书" />
           </Popconfirm>
         </Space>
       ),
@@ -223,8 +228,8 @@ const Certificates: React.FC = () => {
     <div className="page-stack">
       <PageHeader
         eyebrow="TLS 证书管理"
-        title="证书与 TLS 资产"
-        subtitle="在一个视图中识别到期风险、查看颁发信息，并为 Nginx HTTPS 配置提供可靠证书输入。"
+        title="证书管理"
+        subtitle="集中查看证书有效期、域名和颁发者，为 Nginx HTTPS 配置提供可用证书。"
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={loadCertificates}>刷新</Button>
@@ -247,7 +252,7 @@ const Certificates: React.FC = () => {
         </div>
       </SectionCard>
 
-      <SectionCard title="证书列表" subtitle="从剩余有效期、域名和颁发者维度管理证书。" className="ops-table">
+      <SectionCard title="证书列表" subtitle="按有效期、域名和颁发者筛选证书，快速定位风险项。" className="ops-table">
         <FilterToolbar
           left={(
             <Input
@@ -259,11 +264,11 @@ const Certificates: React.FC = () => {
               allowClear
             />
           )}
-          right={<span className="summary-card__hint">双下载按钮分别导出 crt 与 key 文件</span>}
+          right={<span className="summary-card__hint">下载证书时，会分别导出 .crt 和 .key 文件</span>}
         />
 
         {filteredCerts.length === 0 && !loading ? (
-          <EmptyState title="当前没有证书资产" description="上传证书和私钥后，这里会展示有效期、风险等级与下载操作。" action={<Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传首个证书</Button>} />
+          <EmptyState title="当前没有证书资产" description="上传证书和私钥后，这里会显示有效期、风险等级和下载入口。" action={<Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传首个证书</Button>} />
         ) : (
           <Table
             columns={columns}
@@ -287,7 +292,7 @@ const Certificates: React.FC = () => {
       </SectionCard>
 
       <Drawer
-        title="上传证书与密钥"
+        title="上传证书和私钥"
         open={uploadVisible}
         onClose={() => {
           setUploadVisible(false);
@@ -296,16 +301,16 @@ const Certificates: React.FC = () => {
           setKeyFile(null);
         }}
         width={520}
-        extra={<Button type="primary" loading={uploading} onClick={() => form.submit()}>提交上传</Button>}
+        extra={<Button type="primary" loading={uploading} onClick={() => form.submit()}>开始上传</Button>}
       >
         <Form form={form} layout="vertical" onFinish={handleUpload}>
-          <Form.Item label="证书名称" name="name" rules={[{ required: true, message: '请输入证书名称' }]}>
-            <Input placeholder="例如：nginx-prod-cert" />
+          <Form.Item label="证书名称" name="name" rules={[{ required: true, message: '请输入证书名称' }]} extra="建议使用环境或域名相关的名称，方便后续查找">
+            <Input placeholder="例如：prod-api-2026" />
           </Form.Item>
-          <Form.Item label="绑定域名" name="domain">
+          <Form.Item label="主要域名" name="domain" extra="可选，用来标记这张证书主要服务的域名">
             <Input placeholder="例如：api.example.com" />
           </Form.Item>
-          <Form.Item label="证书文件 (.crt / .pem)" required>
+          <Form.Item label="证书文件 (.crt / .pem)" required extra="上传证书正文文件，支持 .crt 或 .pem">
             <Upload
               beforeUpload={(file) => {
                 setCertFile({ uid: file.name, name: file.name, status: 'done', originFileObj: file as any });
@@ -315,10 +320,10 @@ const Certificates: React.FC = () => {
               onRemove={() => setCertFile(null)}
               maxCount={1}
             >
-              <Button icon={<UploadOutlined />}>选择证书文件</Button>
+              <Button icon={<UploadOutlined />}>选择证书</Button>
             </Upload>
           </Form.Item>
-          <Form.Item label="密钥文件 (.key)" required>
+          <Form.Item label="私钥文件 (.key)" required extra="上传与证书配套的私钥文件">
             <Upload
               beforeUpload={(file) => {
                 setKeyFile({ uid: file.name, name: file.name, status: 'done', originFileObj: file as any });
@@ -328,7 +333,7 @@ const Certificates: React.FC = () => {
               onRemove={() => setKeyFile(null)}
               maxCount={1}
             >
-              <Button icon={<UploadOutlined />}>选择密钥文件</Button>
+              <Button icon={<UploadOutlined />}>选择私钥</Button>
             </Upload>
           </Form.Item>
         </Form>

@@ -41,8 +41,8 @@ type NavSection = 'basic' | 'server' | 'locations' | 'upstream' | 'ssl' | 'cache
 const navItems: { key: NavSection; label: string; icon: React.ReactNode; description: string }[] = [
   { key: 'basic', label: '基础设置', icon: <SettingOutlined />, description: '名称、状态、Worker、端口与压缩能力' },
   { key: 'server', label: 'Server 块', icon: <GlobalOutlined />, description: '域名、根目录与全局代理入口' },
-  { key: 'locations', label: 'Locations', icon: <EnvironmentOutlined />, description: '按路径编排处理逻辑和转发规则' },
-  { key: 'upstream', label: 'Upstream', icon: <ClusterOutlined />, description: '定义上游集群与负载均衡策略' },
+  { key: 'locations', label: 'Location 路由', icon: <EnvironmentOutlined />, description: '按路径编排处理逻辑和转发规则' },
+  { key: 'upstream', label: 'Upstream 集群', icon: <ClusterOutlined />, description: '定义上游集群与负载均衡策略' },
   { key: 'ssl', label: 'SSL / TLS', icon: <LockOutlined />, description: '证书、协议、安全传输相关设置' },
   { key: 'cache', label: '缓存', icon: <DatabaseOutlined />, description: '缓存路径、大小与有效期' },
   { key: 'security', label: '安全规则', icon: <SafetyOutlined />, description: '限流、连接数、IP 白名单与头部策略' },
@@ -83,10 +83,10 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
         https_port: 443,
         http_to_https: false,
         server_name: '_',
-        root_path: '/usr/share/nginx/html',
+        root_path: '/usr/local/nginx/html',
         index_files: 'index.html index.htm',
-        access_log_path: '/var/log/nginx/access.log',
-        error_log_path: '/var/log/nginx/error.log',
+        access_log_path: '/usr/local/nginx/logs/access.log',
+        error_log_path: '/usr/local/nginx/logs/error.log',
         log_format: 'json',
         rotate_enabled: false,
         rotate_frequency: 'daily',
@@ -139,7 +139,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
         certificate: undefined,
       });
     } catch (error: any) {
-      message.error(error.message || '加载配置失败');
+      message.error(error.message || '暂时无法加载配置详情');
     } finally {
       setLoadingConfig(false);
     }
@@ -152,8 +152,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
 
     if (!normalizedName) {
       setActiveSection('basic');
-      form.setFields([{ name: 'name', errors: ['请输入名称'] }]);
-      message.error('请先填写配置名称');
+      form.setFields([{ name: 'name', errors: ['请输入配置名称'] }]);
+      message.error('请先填写配置名称，再生成预览或保存');
       return null;
     }
 
@@ -171,10 +171,10 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
       setSaving(true);
       if (configId) {
         await updateNginxConfig(configId, data);
-        message.success('配置已更新');
+        message.success('配置已保存');
       } else {
         await createNginxConfig(data);
-        message.success('配置已创建');
+        message.success('配置已创建，可返回列表继续应用');
       }
       onSave?.();
       onBack();
@@ -202,7 +202,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
       setActiveSection('preview');
     } catch (error: any) {
       if (!error?.errorFields) {
-        message.error(error.message || '预览失败');
+        message.error(error.message || '生成预览失败');
       }
     } finally {
       setPreviewing(false);
@@ -217,13 +217,13 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
             <div className="config-section-card__title">基础设置</div>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="配置名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-                  <Input placeholder="production-web" onChange={(event) => setConfigName(event.target.value)} />
+                <Form.Item label="配置名称" name="name" rules={[{ required: true, message: '请输入配置名称' }] }>
+                  <Input placeholder="例如：production-web" onChange={(event) => setConfigName(event.target.value)} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item label="描述" name="description">
-                  <Input placeholder="配置描述" />
+                  <Input placeholder="例如：生产环境 Web 入口" />
                 </Form.Item>
               </Col>
             </Row>
@@ -234,12 +234,12 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item label="Worker 连接数" name="worker_connections">
+                <Form.Item label="单个 Worker 连接数" name="worker_connections">
                   <InputNumber min={1} max={65535} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item label="最大请求体" name="client_max_body_size">
+                <Form.Item label="最大请求体大小" name="client_max_body_size">
                   <Input placeholder="100m" className="mono" />
                 </Form.Item>
               </Col>
@@ -261,11 +261,11 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item label="状态" name="status">
+            <Form.Item label="发布状态" name="status">
               <Select>
                 <Option value="draft">草稿</Option>
                 <Option value="active">已启用</Option>
-                <Option value="disabled">已禁用</Option>
+                <Option value="disabled">已停用</Option>
               </Select>
             </Form.Item>
           </div>
@@ -276,7 +276,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
             <div className="config-section-card__title">Server 块配置</div>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item label="域名 (server_name)" name="server_name">
+                <Form.Item label="域名（server_name）" name="server_name" extra="可填写 _、单个域名或多个空格分隔的域名">
                   <Input placeholder="_ 或 example.com" className="mono" />
                 </Form.Item>
               </Col>
@@ -286,15 +286,15 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item label="索引文件" name="index_files">
+            <Form.Item label="索引文件列表" name="index_files">
               <Input placeholder="index.html index.htm" className="mono" />
             </Form.Item>
-            <Form.Item name="enable_proxy" valuePropName="checked" label="启用反向代理">
+            <Form.Item name="enable_proxy" valuePropName="checked" label="启用默认反向代理">
               <Switch checkedChildren="启用" unCheckedChildren="禁用" />
             </Form.Item>
             <Form.Item noStyle shouldUpdate={(prev, cur) => prev.enable_proxy !== cur.enable_proxy}>
               {({ getFieldValue }) => getFieldValue('enable_proxy') && (
-                <Form.Item label="默认 Proxy Pass" name="proxy_pass" extra="全局代理地址（Location 级别可覆盖）">
+                <Form.Item label="默认代理地址" name="proxy_pass" extra="Location 路由可单独覆盖这里的代理地址">
                   <Input placeholder="http://127.0.0.1:3000" className="mono" />
                 </Form.Item>
               )}
@@ -318,19 +318,19 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item label="访问日志路径" name="access_log_path">
-                  <Input placeholder="/var/log/nginx/access.log" className="mono" />
+                  <Input placeholder="/usr/local/nginx/logs/access.log" className="mono" />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item label="错误日志路径" name="error_log_path">
-                  <Input placeholder="/var/log/nginx/error.log" className="mono" />
+                  <Input placeholder="/usr/local/nginx/logs/error.log" className="mono" />
                 </Form.Item>
               </Col>
             </Row>
             <Form.Item label="日志格式" name="log_format">
               <Select>
-                <Option value="main">标准格式 (main)</Option>
-                <Option value="json">JSON 格式</Option>
+                <Option value="main">标准文本（main）</Option>
+                <Option value="json">JSON 日志</Option>
               </Select>
             </Form.Item>
 
@@ -339,7 +339,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
               name="rotate_enabled"
               valuePropName="checked"
               label="启用日志轮转"
-              extra="启用后将部署 logrotate 配置到 /etc/logrotate.d/nginx"
+              extra="启用后会同时生成 /etc/logrotate.d/nginx 配置"
             >
               <Switch checkedChildren="启用" unCheckedChildren="禁用" />
             </Form.Item>
@@ -351,9 +351,9 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
                     <Col span={8}>
                       <Form.Item label="轮转频率" name="rotate_frequency">
                         <Select>
-                          <Option value="daily">每天 (daily)</Option>
-                          <Option value="weekly">每周 (weekly)</Option>
-                          <Option value="monthly">每月 (monthly)</Option>
+                          <Option value="daily">每天</Option>
+                          <Option value="weekly">每周</Option>
+                          <Option value="monthly">每月</Option>
                         </Select>
                       </Form.Item>
                     </Col>
@@ -363,7 +363,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
                       </Form.Item>
                     </Col>
                     <Col span={8}>
-                      <Form.Item label="最大文件大小" name="rotate_max_size" extra="超出也触发轮转">
+                      <Form.Item label="最大文件大小" name="rotate_max_size" extra="超过这个大小时，也会立即触发轮转">
                         <Input placeholder="100M" className="mono" />
                       </Form.Item>
                     </Col>
@@ -389,8 +389,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
         return (
           <div className="config-section-card">
             <div className="config-section-card__title">自定义配置</div>
-            <Form.Item label="自定义 Nginx 配置" name="custom_config" extra="直接添加到 http 块中的自定义配置">
-              <TextArea rows={14} placeholder="# 在此添加自定义 Nginx 配置" className="mono" style={{ fontSize: 12 }} />
+            <Form.Item label="附加 Nginx 指令" name="custom_config" extra="会直接追加到 http 块中，请先确认语法正确">
+              <TextArea rows={14} placeholder="# 例如：map $http_upgrade $connection_upgrade { ... }" className="mono" style={{ fontSize: 12 }} />
             </Form.Item>
           </div>
         );
@@ -418,9 +418,9 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Configuration Workbench"
-        title={configId ? `编辑配置 · ${configName}` : '创建新的 Nginx 配置'}
-        subtitle="用 IDE 风格工作台组织基础设置、Server、Locations、TLS、安全和预览，让配置构建过程更聚焦。"
+        eyebrow="配置工作台"
+        title={configId ? `编辑配置 · ${configName}` : '新建 Nginx 配置'}
+        subtitle="在配置工作台里完成基础设置、Server、Location、TLS、安全和预览。"
         actions={(
           <ActionGroup>
             <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回列表</Button>
@@ -461,8 +461,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
         </SectionCard>
 
         <SectionCard
-          title="实时预览"
-          subtitle="在保存之前确认最终生成的 Nginx 配置内容。"
+          title="预览结果"
+          subtitle="保存前先确认最终生成的 Nginx 配置内容。"
           className="config-preview"
           extra={<Button type="link" icon={<EyeOutlined />} onClick={handlePreview} loading={previewing}>刷新预览</Button>}
         >
@@ -470,8 +470,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
             <ConfigPreview content={previewContent} loading={previewing} />
           ) : (
             <EmptyState
-              title="尚未生成预览"
-              description="点击“生成预览”后，这里会展示 Nginx 配置与 logrotate 内容。"
+              title="还没有预览内容"
+              description="点击“生成预览”后，这里会显示 Nginx 配置和 logrotate 配置。"
               action={<Button icon={<EyeOutlined />} onClick={handlePreview} loading={previewing}>生成预览</Button>}
             />
           )}
