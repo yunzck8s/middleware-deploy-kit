@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/models"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/logger"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 

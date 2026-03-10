@@ -188,6 +188,12 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 			"message": "服务运行正常",
 		})
 	})
+
+	// 静态文件服务（前端）
+	r.Static("/assets", "./web/assets")
+	r.NoRoute(func(c *gin.Context) {
+		c.File("./web/index.html")
+	})
 }
 
 // ensureDataDirs 确保数据目录存在
