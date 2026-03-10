@@ -1,0 +1,15 @@
+[Unit]
+Description=Middleware Deploy Kit - 中间件离线部署管理平台
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/middleware-deploy-kit
+ExecStart=/data/middleware-deploy-kit/bin/server
+Restart=on-failure
+RestartSec=5s
+Environment="DATA_DIR=/data/middleware-deploy-kit/data"
+
+[Install]
+WantedBy=multi-user.target

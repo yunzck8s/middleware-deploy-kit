@@ -42,3 +42,8 @@ Thumbs.db
 
 # 工具目录
 .autonomous/
+
+# 构建产物
+dist/
+*.tar.gz
+

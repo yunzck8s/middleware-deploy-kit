@@ -51,14 +51,16 @@
 
 ## 🚀 快速开始
 
-### 1. 克隆项目
+### 开发环境
+
+#### 1. 克隆项目
 
 ```bash
 git clone https://github.com/yunzck8s/middleware-deploy-kit.git
 cd middleware-deploy-kit
 ```
 
-### 2. 启动后端服务
+#### 2. 启动后端服务
 
 ```bash
 cd backend
@@ -72,7 +74,7 @@ go run cmd/server/main.go
 - 用户名: `admin`
 - 密码: `admin123`
 
-### 3. 启动前端服务
+#### 3. 启动前端服务
 
 ```bash
 cd frontend
@@ -82,9 +84,55 @@ npm run dev
 
 前端服务将在 `http://localhost:5173` 启动。
 
-### 4. 访问系统
+#### 4. 访问系统
 
 在浏览器打开 `http://localhost:5173`，使用默认账号登录即可开始使用。
+
+### 生产环境部署
+
+#### 单机二进制部署（推荐）
+
+适用于离线环境的一键部署方案，包含 Nginx 离线包。
+
+**系统要求**:
+- Linux (CentOS 7+, Ubuntu 18.04+)
+- x86_64 架构
+- root 权限
+
+**快速安装**:
+
+```bash
+# 1. 下载部署包
+wget https://example.com/middleware-deploy-kit-v1.0.0-linux-amd64.tar.gz
+
+# 2. 解压并安装
+tar -xzf middleware-deploy-kit-v1.0.0-linux-amd64.tar.gz
+cd middleware-deploy-kit-v1.0.0
+sudo ./scripts/install.sh
+
+# 3. 访问系统
+# http://<服务器IP>/
+# 默认账号: admin / admin123
+```
+
+**服务管理**:
+
+```bash
+systemctl start middleware-deploy    # 启动
+systemctl stop middleware-deploy     # 停止
+systemctl status middleware-deploy   # 状态
+journalctl -u middleware-deploy -f   # 日志
+```
+
+**详细文档**: 查看 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+#### 构建部署包
+
+```bash
+cd scripts
+./build.sh
+# 输出: dist/middleware-deploy-kit-v1.0.0-linux-amd64.tar.gz
+```
 
 ## 📁 项目结构
 

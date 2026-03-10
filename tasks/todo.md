@@ -1,6 +1,86 @@
 # TODO
 
-## Current Sprint
+## 生产部署方案实现 (2026-03-10)
+
+- [x] **Task 1**: 创建构建脚本
+  - ✅ `scripts/build.sh` - 交叉编译 Go 后端 (Linux amd64)，构建前端，打包 tar.gz
+  - ✅ 使用 `CGO_ENABLED=0` 静态编译，注入版本信息
+  - ✅ 输出: `dist/middleware-deploy-kit-v1.0.0-linux-amd64.tar.gz`
+
+- [x] **Task 2**: 创建部署脚本
+  - ✅ `scripts/install.sh` - 一键安装到 `/opt/middleware-deploy-kit/`
+  - ✅ `scripts/uninstall.sh` - 卸载脚本（可选保留数据）
+  - ✅ `scripts/upgrade.sh` - 升级脚本（自动备份和回滚）
+
+- [x] **Task 3**: 创建 systemd 服务
+  - ✅ `deploy/systemd/middleware-deploy.service` - systemd 服务配置
+  - ✅ 自动重启，环境变量支持
+
+- [x] **Task 4**: 创建 Nginx 配置
+  - ✅ `deploy/nginx/nginx.conf.template` - 反向代理配置模板
+  - ✅ 前端静态文件 + 后端 API 代理 + SSE 支持
+
+- [x] **Task 5**: 后端环境变量支持
+  - ✅ 修改 `backend/internal/config/config.go`
+  - ✅ 支持 `SERVER_HOST`, `SERVER_PORT`, `JWT_SECRET`, `DATA_DIR`
+  - ✅ 自动生成随机 JWT secret
+
+- [x] **Task 6**: 前端生产配置
+  - ✅ `frontend/.env.production` - API 相对路径 `/api/v1`
+
+- [x] **Task 7**: 部署文档
+  - ✅ `docs/DEPLOYMENT.md` - 详细部署文档（系统要求、安装、配置、升级、卸载、FAQ）
+  - ✅ 更新 `README.md` - 添加生产部署章节
+
+- [x] **Task 8**: 更新 .gitignore
+  - ✅ 忽略 `dist/` 构建产物
+
+#### 验证
+
+- ✅ `go build ./...` - 后端编译通过
+- ✅ 后端配置环境变量支持正常
+- ✅ 所有部署文件创建完成
+- ⏳ 待验证: 本地构建测试（需要前端 `npm run build`）
+- ⏳ 待验证: Linux 环境完整部署流程
+
+#### 部署包结构
+
+```
+middleware-deploy-kit-v1.0.0-linux-amd64.tar.gz (~425MB)
+├── bin/server                    # Go 后端二进制
+├── web/                          # 前端静态文件
+├── packages/nginx/1.28.0/        # Nginx 离线包 (~396MB)
+├── config/
+│   ├── nginx.conf.template       # Nginx 配置模板
+│   └── config.yaml.example       # 配置示例
+├── scripts/
+│   ├── install.sh                # 安装脚本
+│   ├── uninstall.sh              # 卸载脚本
+│   └── upgrade.sh                # 升级脚本
+├── systemd/
+│   └── middleware-deploy.service # systemd 服务
+└── VERSION                       # 版本信息
+```
+
+---
+
+## 企业级 SaaS UI/UX 全局重设计
+
+- [x] Phase 1: CSS 变量 — Indigo/Zinc 色彩系统替换，移除 shell 变量，纯色 body 背景
+- [x] Phase 2: App.tsx ConfigProvider — Ant Design token 全部替换为 indigo/zinc 色值
+- [x] Phase 3: Layout.tsx 简化 — 移除顶栏、纯文本菜单标签、移除模块卡片、sidebar 240/72px
+- [x] Phase 4: CSS 组件样式 — 移除 ::before 渐变、color-mix()、glassmorphism，纯色背景 + 细边框
+- [x] Phase 5: CSS 动效 — 移除 staggered reveal / industrial keyframes / hover 位移，仅保留 opacity 过渡
+- [x] Phase 6: ThemeToggle 简化 — 移除文本标签，纯图标按钮
+
+### 验证结果
+- `npm run build` — TypeScript + Vite 构建通过 ✅
+- `npx vitest --run` — 13 test files / 46 tests 全部通过 ✅
+- CSS 文件从 2525 行精简至 ~1050 行
+
+---
+
+## Previous Sprint
 
 ### 部署管理 ↔ 配置管理联动修复
 
