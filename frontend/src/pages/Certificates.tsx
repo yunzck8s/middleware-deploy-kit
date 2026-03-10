@@ -58,7 +58,8 @@ const Certificates: React.FC = () => {
       setLoading(true);
       const response = await getCertificateList({ page: 1, page_size: 1000 });
       setCertificates(response.certificates || []);
-      setTotal(response.certificates?.length || 0);
+      // Fix 5: 使用响应中的 total 而非 certificates.length
+      setTotal(response.total || response.certificates?.length || 0);
     } catch (error: any) {
       message.error(error.message || '暂时无法加载证书列表');
     } finally {

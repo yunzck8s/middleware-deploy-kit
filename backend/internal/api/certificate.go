@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -112,6 +113,14 @@ func (ca *CertificateAPI) Upload(c *gin.Context) {
 		return
 	}
 
+	// Fix 2: PEM Block 类型校验
+	if block.Type != "CERTIFICATE" {
+		logger.Errorf("证书文件 PEM 类型无效: %s", block.Type)
+		cleanupCertFiles(certPath, keyPath)
+		response.BadRequest(c, fmt.Sprintf("证书文件 PEM 类型无效，期望 CERTIFICATE，实际为 %s", block.Type))
+		return
+	}
+
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		logger.Errorf("解析证书失败: %v", err)
@@ -120,12 +129,26 @@ func (ca *CertificateAPI) Upload(c *gin.Context) {
 		return
 	}
 
-	// 验证证书和密钥是否匹配（可选，需要额外实现）
-	// TODO: 添加证书和密钥匹配验证
+	// Fix 1: 证书-私钥匹配验证
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		logger.Errorf("读取密钥文件失败: %v", err)
+		cleanupCertFiles(certPath, keyPath)
+		response.InternalServerError(c, "读取密钥文件失败")
+		return
+	}
 
-	// 检查证书名称是否已存在
+	_, err = tls.X509KeyPair(certData, keyData)
+	if err != nil {
+		logger.Errorf("证书和密钥不匹配: %v", err)
+		cleanupCertFiles(certPath, keyPath)
+		response.BadRequest(c, "证书和密钥不匹配")
+		return
+	}
+
+	// Fix 3: 重名检测修复 uniqueIndex 冲突
 	var existingCert models.Certificate
-	result := db.DB.Where("name = ? AND status = 'active'", req.Name).First(&existingCert)
+	result := db.DB.Where("name = ? AND status != 'deleted'", req.Name).First(&existingCert)
 	if result.Error == nil {
 		cleanupCertFiles(certPath, keyPath)
 		response.ConflictWithData(c, "证书名称已存在", gin.H{
@@ -181,7 +204,8 @@ func (ca *CertificateAPI) List(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	// Fix 5: 后端分页上限从 100 改为 1000
+	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20
 	}
 
@@ -191,6 +215,11 @@ func (ca *CertificateAPI) List(c *gin.Context) {
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
+
+	// Fix 7: 批量更新已过期但状态仍为 active 的证书
+	db.DB.Model(&models.Certificate{}).
+		Where("status = ? AND valid_until < ?", "active", time.Now()).
+		Update("status", "expired")
 
 	// 获取总数
 	var total int64
@@ -205,15 +234,6 @@ func (ca *CertificateAPI) List(c *gin.Context) {
 		logger.Errorf("查询证书列表失败: %v", err)
 		response.InternalServerError(c, "查询失败")
 		return
-	}
-
-	// 更新过期状态
-	now := time.Now()
-	for i := range certificates {
-		if certificates[i].Status == "active" && now.After(certificates[i].ValidUntil) {
-			certificates[i].Status = "expired"
-			db.DB.Save(&certificates[i])
-		}
 	}
 
 	response.Success(c, gin.H{
@@ -238,12 +258,6 @@ func (ca *CertificateAPI) Get(c *gin.Context) {
 		return
 	}
 
-	// 更新过期状态
-	if cert.Status == "active" && time.Now().After(cert.ValidUntil) {
-		cert.Status = "expired"
-		db.DB.Save(&cert)
-	}
-
 	response.Success(c, cert)
 }
 
@@ -261,6 +275,14 @@ func (ca *CertificateAPI) Delete(c *gin.Context) {
 		return
 	}
 
+	// Fix 4: 删除前检查 NginxConfig 引用
+	var configCount int64
+	db.DB.Model(&models.NginxConfig{}).Where("certificate_id = ?", id).Count(&configCount)
+	if configCount > 0 {
+		response.BadRequest(c, fmt.Sprintf("该证书正在被 %d 个 Nginx 配置使用，无法删除", configCount))
+		return
+	}
+
 	// 软删除：更新状态为 deleted
 	cert.Status = "deleted"
 	if err := db.DB.Save(&cert).Error; err != nil {
@@ -269,8 +291,8 @@ func (ca *CertificateAPI) Delete(c *gin.Context) {
 		return
 	}
 
-	// 可选：删除物理文件
-	// cleanupCertFiles(cert.CertFilePath, cert.KeyFilePath)
+	// Fix 6: 软删除清理文件
+	cleanupCertFiles(cert.CertFilePath, cert.KeyFilePath)
 
 	logger.Infof("证书已删除: %s (ID: %d)", cert.Name, cert.ID)
 	response.SuccessWithMessage(c, "删除成功", nil)
@@ -311,6 +333,11 @@ func (ca *CertificateAPI) Download(c *gin.Context) {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		response.NotFound(c, "文件不存在")
 		return
+	}
+
+	// Fix 8: 下载私钥增加二次确认日志
+	if fileType == "key" {
+		logger.Warnf("私钥文件被下载: 证书=%s (ID: %d), 操作者=%v", cert.Name, cert.ID, c.GetString("username"))
 	}
 
 	// 下载文件
