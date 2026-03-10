@@ -6,6 +6,7 @@ import * as packageApi from '../../api/package';
 
 vi.mock('../../api/deployment', () => ({
   getDeploymentList: vi.fn().mockResolvedValue({ deployments: [], total: 0, page: 1, page_size: 10 }),
+  getDeploymentDetail: vi.fn(),
   createDeployment: vi.fn(),
   deleteDeployment: vi.fn(),
   executeDeployment: vi.fn(),

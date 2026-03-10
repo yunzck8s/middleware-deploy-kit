@@ -19,7 +19,7 @@ describe('DeploymentStatusOverview', () => {
 
     expect(screen.getAllByText('成功').length).toBeGreaterThan(0);
     expect(screen.getAllByText('50%').length).toBeGreaterThan(0);
-    expect(screen.getByText('等待执行或人工触发')).toBeInTheDocument();
+    expect(screen.getByText('已创建，等待执行')).toBeInTheDocument();
   });
 
   it('renders empty state when total is zero', () => {
