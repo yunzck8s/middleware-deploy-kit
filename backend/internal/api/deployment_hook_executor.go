@@ -55,8 +55,8 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 	if err != nil {
 		hook.Status = "failed"
 		hook.ErrorMsg = fmt.Sprintf("创建脚本文件失败: %v", err)
-		logger.Errorf(hook.ErrorMsg)
-		return fmt.Errorf(hook.ErrorMsg)
+		logger.Errorf("%s", hook.ErrorMsg)
+		return fmt.Errorf("%s", hook.ErrorMsg)
 	}
 
 	_, err = remoteFile.Write([]byte(scriptContent))
@@ -64,16 +64,16 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 	if err != nil {
 		hook.Status = "failed"
 		hook.ErrorMsg = fmt.Sprintf("写入脚本内容失败: %v", err)
-		logger.Errorf(hook.ErrorMsg)
-		return fmt.Errorf(hook.ErrorMsg)
+		logger.Errorf("%s", hook.ErrorMsg)
+		return fmt.Errorf("%s", hook.ErrorMsg)
 	}
 
 	// 设置脚本可执行权限
 	if err := sftpClient.Chmod(scriptPath, 0755); err != nil {
 		hook.Status = "failed"
 		hook.ErrorMsg = fmt.Sprintf("设置脚本权限失败: %v", err)
-		logger.Errorf(hook.ErrorMsg)
-		return fmt.Errorf(hook.ErrorMsg)
+		logger.Errorf("%s", hook.ErrorMsg)
+		return fmt.Errorf("%s", hook.ErrorMsg)
 	}
 
 	// 执行脚本
@@ -81,8 +81,8 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 	if err != nil {
 		hook.Status = "failed"
 		hook.ErrorMsg = fmt.Sprintf("创建 SSH 会话失败: %v", err)
-		logger.Errorf(hook.ErrorMsg)
-		return fmt.Errorf(hook.ErrorMsg)
+		logger.Errorf("%s", hook.ErrorMsg)
+		return fmt.Errorf("%s", hook.ErrorMsg)
 	}
 	defer session.Close()
 
@@ -113,7 +113,7 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 			hook.Status = "failed"
 			hook.ErrorMsg = fmt.Sprintf("脚本执行失败: %v", err)
 			logger.Errorf("钩子执行失败: %s - %v", hook.HookType, err)
-			return fmt.Errorf(hook.ErrorMsg)
+			return fmt.Errorf("%s", hook.ErrorMsg)
 		}
 
 		hook.Status = "success"
@@ -123,7 +123,7 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 	case <-time.After(timeout):
 		hook.Status = "failed"
 		hook.ErrorMsg = fmt.Sprintf("脚本执行超时（超过 %d 秒）", hook.Timeout)
-		logger.Errorf(hook.ErrorMsg)
+		logger.Errorf("%s", hook.ErrorMsg)
 
 		// 尝试清理
 		cleanupSession, _ := sshClient.NewSession()
@@ -132,7 +132,7 @@ func executeHook(hook *models.DeploymentHook, sshClient *ssh.Client, sftpClient 
 			cleanupSession.Close()
 		}
 
-		return fmt.Errorf(hook.ErrorMsg)
+		return fmt.Errorf("%s", hook.ErrorMsg)
 	}
 }
 
