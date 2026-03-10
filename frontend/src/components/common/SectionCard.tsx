@@ -13,7 +13,7 @@ interface SectionCardProps {
 const SectionCard = ({ title, subtitle, extra, children, className, bodyClassName }: SectionCardProps) => {
   return (
     <Card
-      className={`section-card ${className ?? ''}`.trim()}
+      className={`section-card shell-reveal shell-reveal--panel ${className ?? ''}`.trim()}
       styles={{ body: { padding: 0 } }}
       title={
         title || subtitle ? (

@@ -35,7 +35,7 @@ function CardView<T>({
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '50px 0' }}>
-        <Spin size="large" tip="加载中..." />
+        <Spin size="large" tip="正在加载内容..." />
       </div>
     );
   }

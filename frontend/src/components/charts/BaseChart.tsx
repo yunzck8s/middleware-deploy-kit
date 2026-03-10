@@ -30,7 +30,7 @@ const BaseChart: React.FC<BaseChartProps> = ({
           justifyContent: 'center',
         }}
       >
-        <Spin size="large" tip="加载图表中..." />
+        <Spin size="large" tip="正在加载图表..." />
       </div>
     );
   }

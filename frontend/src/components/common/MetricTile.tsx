@@ -14,7 +14,7 @@ interface MetricTileProps {
 const MetricTile = ({ label, value, hint, icon, tone = 'default', loading = false, onClick }: MetricTileProps) => {
   if (loading) {
     return (
-      <div className="metric-tile metric-tile--loading">
+      <div className="metric-tile metric-tile--loading shell-reveal shell-reveal--metric">
         <Skeleton active paragraph={{ rows: 1 }} />
       </div>
     );
@@ -22,7 +22,7 @@ const MetricTile = ({ label, value, hint, icon, tone = 'default', loading = fals
 
   return (
     <div
-      className={`metric-tile metric-tile--${tone} ${onClick ? 'metric-tile--clickable' : ''}`}
+      className={`metric-tile metric-tile--${tone} shell-reveal shell-reveal--metric ${onClick ? 'metric-tile--clickable' : ''}`.trim()}
       onClick={onClick}
       onKeyDown={(event) => {
         if (onClick && (event.key === 'Enter' || event.key === ' ')) {

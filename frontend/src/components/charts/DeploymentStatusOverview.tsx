@@ -14,11 +14,11 @@ interface DeploymentStatusOverviewProps {
 }
 
 const STATUS_DESCRIPTIONS: Record<DeploymentStatusOverviewItem['status'], string> = {
-  pending: '等待执行或人工触发',
-  running: '正在输出实时部署日志',
-  success: '已完成且通过执行流程',
-  failed: '需要查看日志并考虑回滚',
-  cancelled: '被人工中止或提前终止',
+  pending: '已创建，等待执行',
+  running: '正在执行，日志会持续更新',
+  success: '已执行完成，结果正常',
+  failed: '执行失败，建议先查看日志',
+  cancelled: '已手动停止，任务提前结束',
 };
 
 const STATUS_COLORS: Record<DeploymentStatusOverviewItem['status'], string> = {
@@ -34,7 +34,7 @@ const DeploymentStatusOverview = ({ data, total }: DeploymentStatusOverviewProps
     return (
       <EmptyState
         title="暂无部署状态数据"
-        description="创建并执行部署任务后，这里会显示各状态占比、数量与风险提示。"
+        description="创建并执行部署任务后，这里会显示各状态的数量和占比。"
       />
     );
   }

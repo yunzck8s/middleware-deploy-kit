@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { DeploymentLog } from '../types';
 import { message } from 'antd';
 
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+const STREAM_BASE_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 interface UseDeploymentLogsOptions {
   deploymentId: number;
@@ -19,9 +20,24 @@ export const useDeploymentLogs = ({
   const [isConnected, setIsConnected] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const expectedCloseRef = useRef(false);
+  const completedRef = useRef(false);
 
   useEffect(() => {
-    if (!enabled || !deploymentId) return;
+    setLogs([]);
+    setIsConnected(false);
+    setIsDone(false);
+    completedRef.current = false;
+    expectedCloseRef.current = false;
+
+    if (!enabled || !deploymentId) {
+      if (eventSourceRef.current) {
+        expectedCloseRef.current = true;
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      return;
+    }
 
     const token = localStorage.getItem('token');
     if (!token) {
@@ -29,29 +45,25 @@ export const useDeploymentLogs = ({
       return;
     }
 
-    const url = `${API_BASE_URL}/api/v1/deployments/${deploymentId}/logs/stream?token=${token}`;
-
-    // 创建 EventSource
+    const url = `${STREAM_BASE_URL}/api/v1/deployments/${deploymentId}/logs/stream?token=${token}`;
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
-      console.log('SSE 连接已建立');
+      if (eventSourceRef.current !== eventSource) return;
       setIsConnected(true);
+      expectedCloseRef.current = false;
     };
 
-    // 监听日志事件
     eventSource.addEventListener('log', (event) => {
+      if (eventSourceRef.current !== eventSource) return;
       try {
         const log: DeploymentLog = JSON.parse(event.data);
         setLogs((prev) => {
-          // 检查是否已存在（避免重复）
-          const exists = prev.some(l => l.id === log.id);
+          const exists = prev.some((item) => item.id === log.id);
           if (exists) {
-            // 更新现有日志
-            return prev.map(l => l.id === log.id ? log : l);
+            return prev.map((item) => (item.id === log.id ? log : item));
           }
-          // 添加新日志
           return [...prev, log];
         });
       } catch (error) {
@@ -59,33 +71,44 @@ export const useDeploymentLogs = ({
       }
     });
 
-    // 监听完成事件
     eventSource.addEventListener('done', () => {
-      console.log('部署完成');
+      if (eventSourceRef.current !== eventSource) return;
+      completedRef.current = true;
+      expectedCloseRef.current = true;
       setIsDone(true);
-      eventSource.close();
       setIsConnected(false);
+      eventSource.close();
+      eventSourceRef.current = null;
       onComplete?.();
     });
 
     eventSource.onerror = (error) => {
+      if (eventSourceRef.current !== eventSource) return;
+      const expected = expectedCloseRef.current || completedRef.current;
       console.error('SSE 错误:', error);
-      message.error('日志连接中断');
       eventSource.close();
+      eventSourceRef.current = null;
       setIsConnected(false);
+      if (!expected) {
+        message.error('日志连接中断');
+      }
     };
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        setIsConnected(false);
+      expectedCloseRef.current = true;
+      if (eventSourceRef.current === eventSource) {
+        eventSource.close();
+        eventSourceRef.current = null;
       }
+      setIsConnected(false);
     };
   }, [deploymentId, enabled, onComplete]);
 
   const disconnect = () => {
+    expectedCloseRef.current = true;
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
+      eventSourceRef.current = null;
       setIsConnected(false);
     }
   };

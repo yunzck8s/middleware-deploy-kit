@@ -28,22 +28,38 @@ const { Sider, Content } = AntLayout;
 
 const MOBILE_BREAKPOINT = 768;
 
-const breadcrumbMeta: Array<{ match: string; title: string; path?: string }> = [
-  { match: '/servers', title: '服务器', path: '/servers' },
-  { match: '/middleware/nginx/packages', title: '离线包', path: '/middleware/nginx/packages' },
-  { match: '/middleware/nginx/certificates', title: 'SSL 证书', path: '/middleware/nginx/certificates' },
-  { match: '/middleware/nginx/configs', title: '配置管理', path: '/middleware/nginx/configs' },
-  { match: '/middleware/nginx/deployments', title: '部署管理', path: '/middleware/nginx/deployments' },
+interface ShellRouteMeta {
+  match: string;
+  title: string;
+  path?: string;
+  code: string;
+  summary: string;
+}
+
+const shellRoutes: ShellRouteMeta[] = [
+  { match: '/', title: '概览', path: '/', code: 'OPS-00', summary: '查看 Nginx 整体运行情况、资产数量和当前风险。' },
+  { match: '/servers', title: '服务器', path: '/servers', code: 'OPS-10', summary: '管理目标服务器、SSH 接入方式和在线状态。' },
+  { match: '/middleware/nginx/packages', title: '离线包', path: '/middleware/nginx/packages', code: 'OPS-20', summary: '管理版本化离线包，为部署任务提供可选资源。' },
+  { match: '/middleware/nginx/certificates', title: 'SSL 证书', path: '/middleware/nginx/certificates', code: 'OPS-30', summary: '查看 TLS 资产、到期风险和证书可用状态。' },
+  { match: '/middleware/nginx/configs', title: '配置管理', path: '/middleware/nginx/configs', code: 'OPS-40', summary: '编排 Nginx 配置，并在工作台中预览、编辑和应用。' },
+  { match: '/middleware/nginx/deployments', title: '部署管理', path: '/middleware/nginx/deployments', code: 'OPS-50', summary: '执行、回滚、取消部署，并持续查看任务日志。' },
 ];
 
+const createNavLabel = (code: string, label: string) => (
+  <span className="shell-nav-label">
+    <span className="shell-nav-label__code">{code}</span>
+    <span className="shell-nav-label__text">{label}</span>
+  </span>
+);
+
 const menuItems: MenuProps['items'] = [
-  { key: '/', icon: <DashboardOutlined />, label: '概览' },
-  { key: '/servers', icon: <CloudServerOutlined />, label: '服务器' },
+  { key: '/', icon: <DashboardOutlined />, label: createNavLabel('00', '概览') },
+  { key: '/servers', icon: <CloudServerOutlined />, label: createNavLabel('10', '服务器') },
   { type: 'divider' },
-  { key: '/middleware/nginx/packages', icon: <InboxOutlined />, label: '离线包' },
-  { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL 证书' },
-  { key: '/middleware/nginx/configs', icon: <FileTextOutlined />, label: '配置管理' },
-  { key: '/middleware/nginx/deployments', icon: <RocketOutlined />, label: '部署管理' },
+  { key: '/middleware/nginx/packages', icon: <InboxOutlined />, label: createNavLabel('20', '离线包') },
+  { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: createNavLabel('30', 'SSL 证书') },
+  { key: '/middleware/nginx/configs', icon: <FileTextOutlined />, label: createNavLabel('40', '配置管理') },
+  { key: '/middleware/nginx/deployments', icon: <RocketOutlined />, label: createNavLabel('50', '部署管理') },
 ];
 
 const MainLayout = () => {
@@ -62,9 +78,14 @@ const MainLayout = () => {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Close mobile drawer on route change
   useEffect(() => {
     setMobileOpen(false);
+  }, [location.pathname]);
+
+  const activeRoute = useMemo(() => {
+    return [...shellRoutes]
+      .sort((left, right) => right.match.length - left.match.length)
+      .find((entry) => (entry.match === '/' ? location.pathname === '/' : location.pathname.startsWith(entry.match))) ?? shellRoutes[0];
   }, [location.pathname]);
 
   const breadcrumbItems = useMemo(() => {
@@ -74,15 +95,13 @@ const MainLayout = () => {
       return items;
     }
 
-    const match = breadcrumbMeta.find((entry) => location.pathname.startsWith(entry.match));
     if (location.pathname.startsWith('/middleware/nginx/')) {
-      items.push({ title: 'Nginx', path: undefined });
+      items.push({ title: 'Nginx' });
     }
-    if (match) {
-      items.push({ title: match.title, path: match.path });
-    }
+
+    items.push({ title: activeRoute.title, path: activeRoute.path });
     return items;
-  }, [location.pathname]);
+  }, [activeRoute, location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -104,33 +123,40 @@ const MainLayout = () => {
     ],
   };
 
+  const compactSidebar = collapsed && !isMobile;
+
   const sidebarContent = (
-    <>
-      <div
-        style={{
-          padding: collapsed && !isMobile ? '20px 14px' : '22px 18px',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          minHeight: 84,
-        }}
-      >
-        <div className="login-card__logo" style={{ width: 42, height: 42, borderRadius: 14, fontSize: 18, flexShrink: 0 }}>
-          N
+    <div className="shell-sidebar">
+      <div className={`shell-brand ${compactSidebar ? 'shell-brand--collapsed' : ''}`.trim()}>
+        <div className="shell-brand__top">
+          <div className="shell-brand__mark">N</div>
+          {(!collapsed || isMobile) && (
+            <div className="shell-brand__copy">
+              <span className="shell-brand__eyebrow">Industrial Console</span>
+              <div className="shell-brand__title">Nginx 运维控制台</div>
+              <div className="shell-brand__subtitle">平台管理员 · 部署 / 配置 / 证书 / 日志</div>
+            </div>
+          )}
         </div>
         {(!collapsed || isMobile) && (
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>Nginx 运维控制台</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>部署 · 配置 · 证书 · 日志</div>
+          <div className="shell-brand__tags">
+            <span className="shell-tag shell-tag--accent">平台管理员</span>
+            <span className="shell-tag">Nginx 专用</span>
           </div>
         )}
       </div>
 
-      <div style={{ padding: 12, paddingBottom: 144 }}>
+      <div className="shell-nav-wrap">
+        {(!collapsed || isMobile) && (
+          <div className="shell-nav-caption">
+            <span>Control Modules</span>
+            <span className="shell-nav-caption__hint">{activeRoute.code}</span>
+          </div>
+        )}
         <Menu
+          className="shell-nav"
           theme={isDark ? 'dark' : 'light'}
-          selectedKeys={[location.pathname]}
+          selectedKeys={[activeRoute.path ?? location.pathname]}
           mode="inline"
           items={menuItems}
           style={{
@@ -138,82 +164,52 @@ const MainLayout = () => {
             borderRight: 'none',
           }}
           onClick={({ key }) => {
-            if (key.startsWith('/')) navigate(key);
+            if (key.startsWith('/')) {
+              navigate(key);
+            }
           }}
         />
       </div>
 
-      <div
-        style={{
-          position: 'absolute',
-          bottom: isMobile ? 0 : 52,
-          left: 0,
-          right: 0,
-          padding: collapsed && !isMobile ? '8px' : '12px 14px',
-          borderTop: '1px solid var(--border-color)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
-            gap: 8,
-          }}
-        >
-          <ThemeToggle />
-          <Dropdown menu={userMenu} placement="topRight">
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: collapsed && !isMobile ? '6px' : '6px 8px',
-                borderRadius: 12,
-                background: 'var(--bg-muted)',
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-              }}
-            >
-              <Avatar
-                size={28}
-                style={{
-                  background: 'linear-gradient(135deg, var(--color-secondary), var(--color-primary))',
-                  fontWeight: 700,
-                }}
-              >
+      <div className="shell-sidebar__footer">
+        {(!collapsed || isMobile) && (
+          <div className="shell-module-card">
+            <span className="shell-module-card__label">Active Module</span>
+            <div className="shell-module-card__code">{activeRoute.code}</div>
+            <div className="shell-module-card__summary">{activeRoute.summary}</div>
+          </div>
+        )}
+
+        <div className="shell-sidebar__controls">
+          <ThemeToggle compact={compactSidebar} />
+          <Dropdown menu={userMenu} placement="topRight" trigger={['click']}>
+            <button type="button" className={`shell-operator ${compactSidebar ? 'shell-operator--compact' : ''}`.trim()}>
+              <Avatar className="shell-operator__avatar" size={compactSidebar ? 32 : 36}>
                 {user?.username?.charAt(0)?.toUpperCase() || 'U'}
               </Avatar>
               {(!collapsed || isMobile) && (
-                <div>
-                  <div style={{ fontWeight: 600, lineHeight: 1.1, fontSize: 13 }}>{user?.username || '用户'}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>管理员会话</div>
-                </div>
+                <span className="shell-operator__copy">
+                  <strong>{user?.username || '用户'}</strong>
+                  <span>管理员会话</span>
+                </span>
               )}
-            </div>
+            </button>
           </Dropdown>
         </div>
       </div>
 
       {!isMobile && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: '10px 12px',
-            borderTop: '1px solid var(--border-color)',
-            display: 'flex',
-            justifyContent: collapsed ? 'center' : 'flex-end',
-            background: 'var(--header-bg)',
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          <Button type="text" onClick={() => setCollapsed(!collapsed)} icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} />
+        <div className="shell-collapse-rail">
+          <Button
+            type="text"
+            className="shell-collapse-button"
+            onClick={() => setCollapsed(!collapsed)}
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            aria-label={collapsed ? '展开导航' : '折叠导航'}
+          />
         </div>
       )}
-    </>
+    </div>
   );
 
   return (
@@ -223,20 +219,21 @@ const MainLayout = () => {
           placement="left"
           open={mobileOpen}
           onClose={() => setMobileOpen(false)}
-          width={280}
-          styles={{ body: { padding: 0, background: 'var(--bg-secondary)', position: 'relative', minHeight: '100%' } }}
+          width={300}
+          styles={{ body: { padding: 0, background: 'var(--sidebar-bg)', position: 'relative', minHeight: '100%' } }}
           closable={false}
         >
           {sidebarContent}
         </Drawer>
       ) : (
         <Sider
+          className="shell-sider"
           collapsible
           collapsed={collapsed}
           onCollapse={setCollapsed}
           trigger={null}
-          width={248}
-          collapsedWidth={72}
+          width={264}
+          collapsedWidth={84}
           style={{
             background: 'var(--sidebar-bg)',
             borderRight: '1px solid var(--border-color)',
@@ -245,8 +242,7 @@ const MainLayout = () => {
             top: 0,
             bottom: 0,
             zIndex: 100,
-            overflow: 'auto',
-            backdropFilter: 'blur(18px)',
+            overflow: 'hidden',
           }}
         >
           {sidebarContent}
@@ -255,31 +251,63 @@ const MainLayout = () => {
 
       <AntLayout
         style={{
-          marginLeft: isMobile ? 0 : collapsed ? 72 : 248,
-          transition: 'margin-left 180ms ease',
+          marginLeft: isMobile ? 0 : collapsed ? 84 : 264,
+          transition: 'margin-left var(--motion-fast) ease',
           background: 'transparent',
         }}
       >
-        <Content style={{ padding: isMobile ? '16px' : '20px 28px 28px', background: 'transparent' }}>
-          {isMobile && (
-            <Button
-              type="text"
-              icon={<MenuOutlined />}
-              onClick={() => setMobileOpen(true)}
-              style={{ marginBottom: 12 }}
-              aria-label="打开导航菜单"
-            />
-          )}
+        <Content className="shell-content" style={{ padding: isMobile ? '16px' : '24px 28px 28px', background: 'transparent' }}>
+          <div className="shell-topbar">
+            <div className="shell-topbar__lead">
+              {isMobile && (
+                <Button
+                  type="text"
+                  className="shell-mobile-trigger"
+                  icon={<MenuOutlined />}
+                  onClick={() => setMobileOpen(true)}
+                  aria-label="打开导航菜单"
+                />
+              )}
+              <div className="shell-topbar__module">
+                <span className="shell-topbar__eyebrow">Command Surface</span>
+                <div className="shell-topbar__title-row">
+                  <span className="shell-topbar__code">{activeRoute.code}</span>
+                  <span className="shell-topbar__title">{activeRoute.title}</span>
+                </div>
+                <p className="shell-topbar__summary">{activeRoute.summary}</p>
+              </div>
+            </div>
+            <div className="shell-topbar__status">
+              <div className="shell-chip">
+                <span>角色</span>
+                <strong>平台管理员</strong>
+              </div>
+              <div className="shell-chip">
+                <span>模式</span>
+                <strong>{isDark ? '夜间模式' : '日间模式'}</strong>
+              </div>
+              <div className="shell-chip">
+                <span>范围</span>
+                <strong>Nginx 专用工作面</strong>
+              </div>
+            </div>
+          </div>
+
           {location.pathname !== '/' && (
             <Breadcrumb
-              style={{ marginBottom: 14 }}
+              className="shell-breadcrumb"
               items={breadcrumbItems.map((item) => ({
                 title: item.title,
                 onClick: item.path ? () => navigate(item.path as string) : undefined,
               }))}
             />
           )}
-          <Outlet />
+
+          <div className="shell-stage">
+            <div key={location.pathname} className="shell-stage__route">
+              <Outlet />
+            </div>
+          </div>
         </Content>
       </AntLayout>
     </AntLayout>

@@ -9,7 +9,7 @@ interface PageHeaderProps {
 
 const PageHeader = ({ title, subtitle, eyebrow, actions }: PageHeaderProps) => {
   return (
-    <div className="page-header">
+    <div className="page-header shell-reveal shell-reveal--hero">
       <div className="page-header__copy">
         {eyebrow && <span className="page-header__eyebrow">{eyebrow}</span>}
         <h2 className="page-header__title">{title}</h2>

@@ -7,7 +7,7 @@ interface FilterToolbarProps {
 
 const FilterToolbar = ({ left, right }: FilterToolbarProps) => {
   return (
-    <div className="filter-toolbar">
+    <div className="filter-toolbar shell-reveal shell-reveal--panel">
       <div className="filter-toolbar__left">{left}</div>
       <div className="filter-toolbar__right">{right}</div>
     </div>

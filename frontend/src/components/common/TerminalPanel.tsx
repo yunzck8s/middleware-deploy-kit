@@ -30,7 +30,7 @@ const TerminalPanel = ({
           {meta}
           {onCopy && (
             <Button type="text" icon={<CopyOutlined />} onClick={onCopy}>
-              复制
+              复制日志
             </Button>
           )}
         </div>

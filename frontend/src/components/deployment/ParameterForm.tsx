@@ -76,7 +76,7 @@ export const ParameterForm: React.FC<ParameterFormProps> = ({ parameters }) => {
     if (param.required) {
       rules.push({
         required: true,
-        message: `${param.label}是必填项`,
+        message: `请填写${param.label}`,
       });
     }
 
@@ -86,14 +86,14 @@ export const ParameterForm: React.FC<ParameterFormProps> = ({ parameters }) => {
         rules.push({
           type: 'number',
           min: param.min,
-          message: `${param.label}不能小于${param.min}`,
+          message: `${param.label}不能小于 ${param.min}`,
         });
       }
       if (param.max !== undefined) {
         rules.push({
           type: 'number',
           max: param.max,
-          message: `${param.label}不能大于${param.max}`,
+          message: `${param.label}不能大于 ${param.max}`,
         });
       }
     }
@@ -103,13 +103,13 @@ export const ParameterForm: React.FC<ParameterFormProps> = ({ parameters }) => {
       if (param.min_len !== undefined) {
         rules.push({
           min: param.min_len,
-          message: `${param.label}长度不能少于${param.min_len}个字符`,
+          message: `${param.label}至少需要 ${param.min_len} 个字符`,
         });
       }
       if (param.max_len !== undefined) {
         rules.push({
           max: param.max_len,
-          message: `${param.label}长度不能超过${param.max_len}个字符`,
+          message: `${param.label}不能超过 ${param.max_len} 个字符`,
         });
       }
       // 正则验证
@@ -148,7 +148,7 @@ export const ParameterForm: React.FC<ParameterFormProps> = ({ parameters }) => {
       {/* 高级参数 - 可折叠 */}
       {advancedParams.length > 0 && (
         <Collapse ghost>
-          <Panel header="高级配置（可选）" key="advanced">
+          <Panel header="高级参数（按需填写）" key="advanced">
             {advancedParams.map((param) => (
               <Form.Item
                 key={param.name}
