@@ -28,7 +28,6 @@ const MoonIcon = () => (
 const ThemeToggle = ({ compact = false }: ThemeToggleProps) => {
   const { isDark, toggleTheme } = useTheme();
   const nextLabel = isDark ? '切换到亮色模式' : '切换到暗色模式';
-  const actionLabel = isDark ? '日间' : '夜间';
 
   return (
     <Tooltip title={nextLabel}>
@@ -38,9 +37,7 @@ const ThemeToggle = ({ compact = false }: ThemeToggleProps) => {
         icon={isDark ? <SunIcon /> : <MoonIcon />}
         onClick={toggleTheme}
         aria-label={nextLabel}
-      >
-        {!compact && <span className="theme-toggle__label">{actionLabel}</span>}
-      </Button>
+      />
     </Tooltip>
   );
 };
