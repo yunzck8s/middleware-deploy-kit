@@ -102,7 +102,24 @@ export interface NginxLocation {
   match_type?: string;             // exact, prefix, regex, regex_case_insensitive
   handler_type?: string;           // static, proxy, redirect, return
   proxy_pass?: string;
-  proxy_set_headers?: string;      // JSON
+  proxy_set_headers?: string;      // JSON - 额外自定义请求头
+  // Proxy 高级配置
+  proxy_connect_timeout?: string;
+  proxy_send_timeout?: string;
+  proxy_read_timeout?: string;
+  proxy_buffering?: string;        // on / off
+  proxy_buffer_size?: string;
+  proxy_buffers?: string;
+  proxy_busy_buffers_size?: string;
+  proxy_temp_file_write_size?: string;
+  proxy_next_upstream?: string;
+  proxy_next_upstream_tries?: number;
+  proxy_next_upstream_timeout?: string;
+  proxy_http_version?: string;
+  proxy_max_temp_file_size?: string;
+  enable_websocket?: boolean;
+  enable_cors?: boolean;
+  location_max_body_size?: string;
   root?: string;
   try_files?: string;
   redirect_url?: string;
@@ -165,6 +182,7 @@ export interface NginxConfig {
   client_max_body_size: string;
   gzip: boolean;
   custom_config: string;
+  manual_config?: string;
   status: 'draft' | 'active' | 'disabled';
   // SSL/TLS advanced
   ssl_protocols?: string;

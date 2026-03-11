@@ -68,6 +68,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
   const [previewContent, setPreviewContent] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const [configName, setConfigName] = useState('');
+  const [manualConfig, setManualConfig] = useState('');
 
   useEffect(() => {
     loadCertificates();
@@ -131,6 +132,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
       setConfigName(config.name);
       setLocations(config.locations || []);
       setUpstreams(config.upstreams || []);
+      setManualConfig(config.manual_config || '');
       form.setFieldsValue({
         ...config,
         locations: undefined,
@@ -161,6 +163,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
       ...values,
       name: normalizedName,
       locations,
+      manual_config: manualConfig || undefined,
     };
   };
 
@@ -199,6 +202,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
         content += result.logrotate_content;
       }
       setPreviewContent(content);
+      setManualConfig('');
       setActiveSection('preview');
     } catch (error: any) {
       if (!error?.errorFields) {
@@ -400,6 +404,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
             content={previewContent}
             loading={previewing}
             onRefresh={handlePreview}
+            editable
+            onContentChange={setManualConfig}
           />
         );
       default:
@@ -467,7 +473,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
           extra={<Button type="link" icon={<EyeOutlined />} onClick={handlePreview} loading={previewing}>刷新预览</Button>}
         >
           {previewContent ? (
-            <ConfigPreview content={previewContent} loading={previewing} />
+            <ConfigPreview content={previewContent} loading={previewing} editable onContentChange={setManualConfig} />
           ) : (
             <EmptyState
               title="还没有预览内容"

@@ -54,6 +54,7 @@ type NginxConfig struct {
 	ClientMaxBodySize string `json:"client_max_body_size" gorm:"default:'100m'"` // 客户端最大请求体
 	Gzip              bool   `json:"gzip" gorm:"default:true"`                   // 是否启用 Gzip
 	CustomConfig      string `json:"custom_config" gorm:"type:text"`             // 自定义配置片段
+	ManualConfig      string `json:"manual_config" gorm:"type:text"`             // 手动编辑的完整配置（优先级高于自动生成）
 
 	// SSL/TLS 高级配置
 	SSLProtocols string `json:"ssl_protocols" gorm:"default:'TLSv1.2 TLSv1.3'"`
@@ -113,7 +114,25 @@ type NginxLocation struct {
 
 	// Proxy 配置
 	ProxyPass       string `json:"proxy_pass"`        // 代理地址
-	ProxySetHeaders string `json:"proxy_set_headers"` // JSON 格式的 header 设置
+	ProxySetHeaders string `json:"proxy_set_headers"` // JSON 格式的额外自定义 header
+
+	// Proxy 高级配置
+	ProxyConnectTimeout       string `json:"proxy_connect_timeout"`        // 连接超时
+	ProxySendTimeout          string `json:"proxy_send_timeout"`           // 发送超时
+	ProxyReadTimeout          string `json:"proxy_read_timeout"`           // 读取超时
+	ProxyBuffering            string `json:"proxy_buffering"`              // 代理缓冲 on/off
+	ProxyBufferSize           string `json:"proxy_buffer_size"`            // 缓冲区大小
+	ProxyBuffers              string `json:"proxy_buffers"`                // 缓冲区数量和大小
+	ProxyBusyBuffersSize      string `json:"proxy_busy_buffers_size"`      // 忙碌缓冲区大小
+	ProxyTempFileWriteSize    string `json:"proxy_temp_file_write_size"`   // 临时文件写入大小
+	ProxyNextUpstream         string `json:"proxy_next_upstream"`          // 失败转移条件
+	ProxyNextUpstreamTries    int    `json:"proxy_next_upstream_tries"`    // 最大重试次数
+	ProxyNextUpstreamTimeout  string `json:"proxy_next_upstream_timeout"`  // 重试超时
+	ProxyHTTPVersion          string `json:"proxy_http_version"`           // HTTP 版本
+	ProxyMaxTempFileSize      string `json:"proxy_max_temp_file_size"`     // 代理最大临时文件大小
+	EnableWebsocket           bool   `json:"enable_websocket"`             // 是否启用 WebSocket
+	EnableCORS                bool   `json:"enable_cors"`                  // 是否启用 CORS
+	LocationMaxBodySize       string `json:"location_max_body_size"`       // Location 级别最大请求体
 
 	// Redirect 配置
 	RedirectURL  string `json:"redirect_url"`

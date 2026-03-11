@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Button, Form, Input, Select, InputNumber, Space, Modal, Row, Col, Tag, Empty, Popconfirm, Tooltip } from 'antd';
+import { Card, Button, Form, Input, Select, InputNumber, Switch, Space, Modal, Row, Col, Tag, Empty, Popconfirm, Tooltip, Collapse } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NginxLocation } from '../../types';
 
@@ -22,6 +22,25 @@ const handlerTypeLabels: Record<string, string> = {
   proxy: '反向代理',
   redirect: '重定向',
   return: '固定返回',
+};
+
+const proxyDefaults: Partial<NginxLocation> = {
+  proxy_connect_timeout: '30',
+  proxy_send_timeout: '300',
+  proxy_read_timeout: '300',
+  proxy_buffering: 'on',
+  proxy_buffer_size: '4k',
+  proxy_buffers: '8 4k',
+  proxy_busy_buffers_size: '8k',
+  proxy_temp_file_write_size: '1024m',
+  proxy_http_version: '1.1',
+  proxy_max_temp_file_size: '1024m',
+  proxy_next_upstream: 'error timeout',
+  proxy_next_upstream_tries: 3,
+  proxy_next_upstream_timeout: '30s',
+  enable_websocket: true,
+  enable_cors: true,
+  location_max_body_size: '1024m',
 };
 
 const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) => {
@@ -82,6 +101,16 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
     }
   };
 
+  const handleHandlerTypeChange = (type: string) => {
+    if (type === 'proxy') {
+      const current = form.getFieldsValue(true);
+      // Only set defaults if proxy fields are empty (new or switching to proxy)
+      if (!current.proxy_connect_timeout) {
+        form.setFieldsValue(proxyDefaults);
+      }
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -114,7 +143,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                   <Tooltip title="编辑这条路由规则">
                     <Button type="text" icon={<EditOutlined />} size="small" onClick={() => handleEdit(index)} aria-label="编辑路由规则" />
                   </Tooltip>
-                  <Popconfirm title={`删除路径“${loc.path}”后，这条规则将不再生效。确定删除吗？`} onConfirm={() => handleDelete(index)} okText="删除" cancelText="取消">
+                  <Popconfirm title={`删除路径"${loc.path}"后，这条规则将不再生效。确定删除吗？`} onConfirm={() => handleDelete(index)} okText="删除" cancelText="取消">
                     <Tooltip title="删除这条路由规则">
                       <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除路由规则" />
                     </Tooltip>
@@ -131,7 +160,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        width={650}
+        width={700}
       >
         <Form form={form} layout="vertical">
           <Row gutter={16}>
@@ -153,7 +182,7 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
           </Row>
 
           <Form.Item label="处理方式" name="handler_type">
-            <Select>
+            <Select onChange={handleHandlerTypeChange}>
               <Option value="static">静态文件</Option>
               <Option value="proxy">反向代理</Option>
               <Option value="redirect">重定向</Option>
@@ -182,8 +211,123 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                     <Form.Item label="代理目标地址" name="proxy_pass" rules={[{ required: true, message: '请输入代理目标地址' }]}>
                       <Input placeholder="http://127.0.0.1:3000 或 http://upstream_name" style={{ fontFamily: 'var(--font-mono)' }} />
                     </Form.Item>
-                    <Form.Item label="转发请求头（JSON）" name="proxy_set_headers" extra="按 JSON 填写要附加的请求头，例如 {&quot;Host&quot;: &quot;$host&quot;}">
-                      <Input.TextArea rows={3} placeholder='{"Host": "$host", "X-Real-IP": "$remote_addr"}' style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+
+                    <Collapse
+                      ghost
+                      items={[{
+                        key: 'proxy-settings',
+                        label: '代理设置',
+                        children: (
+                          <div style={{ paddingTop: 8 }}>
+                            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}>超时</div>
+                            <Row gutter={16}>
+                              <Col span={8}>
+                                <Form.Item label="连接超时" name="proxy_connect_timeout">
+                                  <Input placeholder="60s" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="发送超时" name="proxy_send_timeout">
+                                  <Input placeholder="60s" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="读取超时" name="proxy_read_timeout">
+                                  <Input placeholder="60s" className="mono" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+
+                            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}>缓冲</div>
+                            <Row gutter={16}>
+                              <Col span={8}>
+                                <Form.Item label="代理缓冲" name="proxy_buffering">
+                                  <Select>
+                                    <Option value="on">on</Option>
+                                    <Option value="off">off</Option>
+                                  </Select>
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="缓冲区大小" name="proxy_buffer_size">
+                                  <Input placeholder="4k" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="缓冲区数量" name="proxy_buffers">
+                                  <Input placeholder="8 4k" className="mono" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+
+                            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}>高级</div>
+                            <Row gutter={16}>
+                              <Col span={8}>
+                                <Form.Item label="忙碌缓冲区" name="proxy_busy_buffers_size">
+                                  <Input placeholder="8k" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="临时文件大小" name="proxy_temp_file_write_size">
+                                  <Input placeholder="64k" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="HTTP 版本" name="proxy_http_version">
+                                  <Select>
+                                    <Option value="1.0">1.0</Option>
+                                    <Option value="1.1">1.1</Option>
+                                  </Select>
+                                </Form.Item>
+                              </Col>
+                            </Row>
+                            <Row gutter={16}>
+                              <Col span={8}>
+                                <Form.Item label="最大临时文件" name="proxy_max_temp_file_size" extra="proxy_max_temp_file_size">
+                                  <Input placeholder="1024m" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="文件上传大小" name="location_max_body_size" extra="client_max_body_size (Location 级别)">
+                                  <Input placeholder="1024m" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item name="enable_cors" valuePropName="checked" label="CORS 跨域" extra="自动添加 Access-Control 头">
+                                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+
+                            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 13, color: 'var(--text-secondary)' }}>重试</div>
+                            <Row gutter={16}>
+                              <Col span={8}>
+                                <Form.Item label="失败转移条件" name="proxy_next_upstream">
+                                  <Input placeholder="error timeout" className="mono" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="最大重试次数" name="proxy_next_upstream_tries">
+                                  <InputNumber min={0} max={10} style={{ width: '100%' }} />
+                                </Form.Item>
+                              </Col>
+                              <Col span={8}>
+                                <Form.Item label="重试超时" name="proxy_next_upstream_timeout">
+                                  <Input placeholder="30s" className="mono" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
+
+                            <Form.Item name="enable_websocket" valuePropName="checked" label="WebSocket 支持" extra="启用后自动添加 Upgrade 和 Connection 头">
+                              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                            </Form.Item>
+                          </div>
+                        ),
+                      }]}
+                    />
+
+                    <Form.Item label="额外自定义请求头（JSON）" name="proxy_set_headers" extra="按 JSON 填写要附加的额外请求头" style={{ marginTop: 16 }}>
+                      <Input.TextArea rows={3} placeholder='{"X-Custom-Header": "value"}' style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
                     </Form.Item>
                   </>
                 );

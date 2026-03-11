@@ -165,7 +165,11 @@ func (a *DeploymentAPI) Create(c *gin.Context) {
 		}
 		deployment.CertificateID = req.CertificateID
 		if deployment.TargetPath == "" {
-			deployment.TargetPath = "/etc/nginx/ssl"
+			installDir := inferNginxInstallDir(deployment.ServerID)
+			if installDir == "" {
+				installDir = "/usr/local/nginx"
+			}
+			deployment.TargetPath = installDir + "/ssl"
 		}
 	}
 
@@ -377,7 +381,11 @@ func (a *DeploymentAPI) BatchCreate(c *gin.Context) {
 			}
 			deployment.CertificateID = req.CertificateID
 			if deployment.TargetPath == "" {
-				deployment.TargetPath = "/etc/nginx/ssl"
+				installDir := inferNginxInstallDir(deployment.ServerID)
+				if installDir == "" {
+					installDir = "/usr/local/nginx"
+				}
+				deployment.TargetPath = installDir + "/ssl"
 			}
 		}
 

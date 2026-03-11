@@ -61,6 +61,7 @@ type CreateNginxConfigRequest struct {
 	ClientMaxBodySize string                 `json:"client_max_body_size"`
 	Gzip              bool                   `json:"gzip"`
 	CustomConfig      string                 `json:"custom_config"`
+	ManualConfig      string                 `json:"manual_config"`
 }
 
 // Create 创建 Nginx 配置
@@ -113,6 +114,7 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		ClientMaxBodySize: defaultString(req.ClientMaxBodySize, "100m"),
 		Gzip:              req.Gzip,
 		CustomConfig:      req.CustomConfig,
+		ManualConfig:      req.ManualConfig,
 		Status:            "draft",
 	}
 
@@ -259,6 +261,7 @@ func (n *NginxAPI) Update(c *gin.Context) {
 	cfg.ClientMaxBodySize = req.ClientMaxBodySize
 	cfg.Gzip = req.Gzip
 	cfg.CustomConfig = req.CustomConfig
+	cfg.ManualConfig = req.ManualConfig
 
 	// 使用事务更新配置和 locations
 	tx := db.DB.Begin()
@@ -605,16 +608,30 @@ func generateNginxConfigWithContext(cfg *models.NginxConfig, runtimeUser, instal
 	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", installDir+"/logs/access.log")
 	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", installDir+"/logs/error.log")
 
+	sslCertPath := ""
+	sslKeyPath := ""
+	if cfg.Certificate != nil {
+		sslDir := installDir + "/ssl"
+		sslCertPath = sslDir + "/" + filepath.Base(cfg.Certificate.CertFilePath)
+		sslKeyPath = sslDir + "/" + filepath.Base(cfg.Certificate.KeyFilePath)
+	}
+
 	data := struct {
 		*models.NginxConfig
 		RuntimeUser   string
 		PidPath       string
 		MimeTypesPath string
+		SSLCertPath   string
+		SSLKeyPath    string
+		InstallDir    string
 	}{
 		NginxConfig:   &resolved,
 		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
 		PidPath:       installDir + "/logs/nginx.pid",
 		MimeTypesPath: installDir + "/conf/mime.types",
+		SSLCertPath:   sslCertPath,
+		SSLKeyPath:    sslKeyPath,
+		InstallDir:    installDir,
 	}
 
 	return executeNginxTemplate(data)
@@ -622,20 +639,35 @@ func generateNginxConfigWithContext(cfg *models.NginxConfig, runtimeUser, instal
 
 func generateNginxConfigWithRuntimeUser(cfg *models.NginxConfig, runtimeUser string) (string, error) {
 	resolved := *cfg
+	installDir := defaultNginxInstallDir
 	resolved.RootPath = normalizeLegacyNginxPath(resolved.RootPath, "/usr/share/nginx/html", defaultNginxRootPath())
 	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", defaultNginxAccessLogPath())
 	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", defaultNginxErrorLogPath())
+
+	sslCertPath := ""
+	sslKeyPath := ""
+	if cfg.Certificate != nil {
+		sslDir := installDir + "/ssl"
+		sslCertPath = sslDir + "/" + filepath.Base(cfg.Certificate.CertFilePath)
+		sslKeyPath = sslDir + "/" + filepath.Base(cfg.Certificate.KeyFilePath)
+	}
 
 	data := struct {
 		*models.NginxConfig
 		RuntimeUser   string
 		PidPath       string
 		MimeTypesPath string
+		SSLCertPath   string
+		SSLKeyPath    string
+		InstallDir    string
 	}{
 		NginxConfig:   &resolved,
 		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
 		PidPath:       defaultNginxPidPath(),
 		MimeTypesPath: defaultNginxMimeTypesPath(),
+		SSLCertPath:   sslCertPath,
+		SSLKeyPath:    sslKeyPath,
+		InstallDir:    installDir,
 	}
 
 	return executeNginxTemplate(data)
@@ -752,12 +784,63 @@ http {
 {{if .EnableProxy}}
 {{if .Locations}}{{range .Locations}}
         location {{.Path}} {
+{{if .EnableCORS}}
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
+            add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
+{{end}}
 {{if .ProxyPass}}
             proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+{{if .EnableWebsocket}}
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+{{end}}
+{{if .ProxyHTTPVersion}}
+            proxy_http_version {{.ProxyHTTPVersion}};
+{{end}}
+{{if .ProxyConnectTimeout}}
+            proxy_connect_timeout {{.ProxyConnectTimeout}};
+{{end}}
+{{if .ProxySendTimeout}}
+            proxy_send_timeout {{.ProxySendTimeout}};
+{{end}}
+{{if .ProxyReadTimeout}}
+            proxy_read_timeout {{.ProxyReadTimeout}};
+{{end}}
+{{if .ProxyMaxTempFileSize}}
+            proxy_max_temp_file_size {{.ProxyMaxTempFileSize}};
+{{end}}
+{{if .LocationMaxBodySize}}
+            client_max_body_size {{.LocationMaxBodySize}};
+{{end}}
+{{if .ProxyBuffering}}
+            proxy_buffering {{.ProxyBuffering}};
+{{end}}
+{{if .ProxyBufferSize}}
+            proxy_buffer_size {{.ProxyBufferSize}};
+{{end}}
+{{if .ProxyBuffers}}
+            proxy_buffers {{.ProxyBuffers}};
+{{end}}
+{{if .ProxyBusyBuffersSize}}
+            proxy_busy_buffers_size {{.ProxyBusyBuffersSize}};
+{{end}}
+{{if .ProxyTempFileWriteSize}}
+            proxy_temp_file_write_size {{.ProxyTempFileWriteSize}};
+{{end}}
+{{if .ProxyNextUpstream}}
+            proxy_next_upstream {{.ProxyNextUpstream}};
+{{end}}
+{{if .ProxyNextUpstreamTries}}
+            proxy_next_upstream_tries {{.ProxyNextUpstreamTries}};
+{{end}}
+{{if .ProxyNextUpstreamTimeout}}
+            proxy_next_upstream_timeout {{.ProxyNextUpstreamTimeout}};
+{{end}}
 {{end}}
 {{if .Root}}
             root {{.Root}};
@@ -771,7 +854,7 @@ http {
 {{end}}{{else}}
         location / {
             proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -789,11 +872,11 @@ http {
 {{if .EnableHTTPS}}
     # HTTPS Server
     server {
-        listen {{.HTTPSPort}} ssl http2;
+        listen {{.HTTPSPort}} ssl;
         server_name {{.ServerName}};
 
-        ssl_certificate {{if .Certificate}}{{.Certificate.CertFilePath}}{{else}}/etc/nginx/ssl/cert.crt{{end}};
-        ssl_certificate_key {{if .Certificate}}{{.Certificate.KeyFilePath}}{{else}}/etc/nginx/ssl/cert.key{{end}};
+        ssl_certificate {{if .SSLCertPath}}{{.SSLCertPath}}{{else}}{{.InstallDir}}/ssl/cert.crt{{end}};
+        ssl_certificate_key {{if .SSLKeyPath}}{{.SSLKeyPath}}{{else}}{{.InstallDir}}/ssl/cert.key{{end}};
 
         ssl_session_timeout 1d;
         ssl_session_cache shared:SSL:50m;
@@ -831,12 +914,63 @@ http {
 {{if .EnableProxy}}
 {{if .Locations}}{{range .Locations}}
         location {{.Path}} {
+{{if .EnableCORS}}
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
+            add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
+{{end}}
 {{if .ProxyPass}}
             proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+{{if .EnableWebsocket}}
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+{{end}}
+{{if .ProxyHTTPVersion}}
+            proxy_http_version {{.ProxyHTTPVersion}};
+{{end}}
+{{if .ProxyConnectTimeout}}
+            proxy_connect_timeout {{.ProxyConnectTimeout}};
+{{end}}
+{{if .ProxySendTimeout}}
+            proxy_send_timeout {{.ProxySendTimeout}};
+{{end}}
+{{if .ProxyReadTimeout}}
+            proxy_read_timeout {{.ProxyReadTimeout}};
+{{end}}
+{{if .ProxyMaxTempFileSize}}
+            proxy_max_temp_file_size {{.ProxyMaxTempFileSize}};
+{{end}}
+{{if .LocationMaxBodySize}}
+            client_max_body_size {{.LocationMaxBodySize}};
+{{end}}
+{{if .ProxyBuffering}}
+            proxy_buffering {{.ProxyBuffering}};
+{{end}}
+{{if .ProxyBufferSize}}
+            proxy_buffer_size {{.ProxyBufferSize}};
+{{end}}
+{{if .ProxyBuffers}}
+            proxy_buffers {{.ProxyBuffers}};
+{{end}}
+{{if .ProxyBusyBuffersSize}}
+            proxy_busy_buffers_size {{.ProxyBusyBuffersSize}};
+{{end}}
+{{if .ProxyTempFileWriteSize}}
+            proxy_temp_file_write_size {{.ProxyTempFileWriteSize}};
+{{end}}
+{{if .ProxyNextUpstream}}
+            proxy_next_upstream {{.ProxyNextUpstream}};
+{{end}}
+{{if .ProxyNextUpstreamTries}}
+            proxy_next_upstream_tries {{.ProxyNextUpstreamTries}};
+{{end}}
+{{if .ProxyNextUpstreamTimeout}}
+            proxy_next_upstream_timeout {{.ProxyNextUpstreamTimeout}};
+{{end}}
 {{end}}
 {{if .Root}}
             root {{.Root}};
@@ -850,7 +984,7 @@ http {
 {{end}}{{else}}
         location / {
             proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -1145,16 +1279,23 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 	// 步骤3: 生成配置文件
 	n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "running", "", "")
 	installDir := inferNginxInstallDir(apply.ServerID)
-	content, err := generateNginxConfigWithContext(cfg, runtimeUser, installDir)
-	if err != nil {
-		logger.Errorf("生成配置文件失败: %v", err)
-		n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "failed", "", err.Error())
-		finalStatus = "failed"
-		errorMsg = "生成配置文件失败"
-		return
+	var content string
+	if cfg.ManualConfig != "" {
+		content = cfg.ManualConfig
+		n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "success", "使用手动编辑的配置内容", "")
+	} else {
+		var err error
+		content, err = generateNginxConfigWithContext(cfg, runtimeUser, installDir)
+		if err != nil {
+			logger.Errorf("生成配置文件失败: %v", err)
+			n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "failed", "", err.Error())
+			finalStatus = "failed"
+			errorMsg = "生成配置文件失败"
+			return
+		}
+		installDirInfo := defaultString(installDir, defaultNginxInstallDir)
+		n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "success", fmt.Sprintf("配置文件生成成功\n运行用户: %s\n安装目录: %s", runtimeUser, installDirInfo), "")
 	}
-	installDirInfo := defaultString(installDir, defaultNginxInstallDir)
-	n.addApplyLog(applyID, 3, "生成 Nginx 配置文件", "success", fmt.Sprintf("配置文件生成成功\n运行用户: %s\n安装目录: %s", runtimeUser, installDirInfo), "")
 
 	// 步骤4: 备份原配置（如果启用）
 	if apply.BackupEnabled {

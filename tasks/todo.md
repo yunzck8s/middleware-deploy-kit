@@ -1,5 +1,31 @@
 # TODO
 
+## 配置管理与部署管理逻辑修复 (2026-03-11)
+
+- [x] **Fix 3**: 移除 HTTP/2 — `listen {{.HTTPSPort}} ssl;`
+- [x] **Fix 1**: 证书部署路径自动推导
+  - ✅ `deployment.go` Create/BatchCreate 使用 `inferNginxInstallDir`
+  - ✅ `Deployments.tsx` 选择服务器后自动填充 target_path
+- [x] **Fix 2**: SSL 证书路径 Bug
+  - ✅ 模板使用远程路径 `{installDir}/ssl/{filename}` 替代本地管理平台路径
+  - ✅ `generateNginxConfigWithContext` 和 `generateNginxConfigWithRuntimeUser` 增加 SSLCertPath/SSLKeyPath/InstallDir
+- [x] **Fix 5**: Location 代理设置完善
+  - ✅ NginxLocation 模型新增 13 个代理字段
+  - ✅ 模板 proxy location 块扩展（HTTP + HTTPS 各 1 处 range 块）
+  - ✅ TypeScript 类型同步更新
+  - ✅ LocationEditor 新增折叠面板式代理设置（超时/缓冲/高级/重试/WebSocket）
+- [x] **Fix 4**: 配置预览支持手动编辑
+  - ✅ NginxConfig 模型新增 ManualConfig 字段
+  - ✅ ConfigPreview 新增编辑/预览切换、已编辑标签、重置按钮
+  - ✅ ConfigEditor 管理 manualConfig 状态，保存/创建时传递
+  - ✅ executeApplyConfig 优先使用 ManualConfig
+
+### 验证结果
+- ✅ `go build ./...` — 编译通过
+- ✅ `go test ./...` — 全部通过
+- ✅ `npm run build` — TypeScript 编译 + Vite 构建通过
+- ✅ `npx vitest --run` — 13 个测试文件、46 个测试用例全部通过
+
 ## 生产部署方案实现 (2026-03-10)
 
 - [x] **Task 1**: 创建构建脚本

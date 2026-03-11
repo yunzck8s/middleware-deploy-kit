@@ -44,6 +44,7 @@ import { useDeploymentLogs } from '../hooks/useDeploymentLogs';
 import { getServerList } from '../api/server';
 import { getPackageList, getPackageMetadata } from '../api/package';
 import { getCertificateList } from '../api/certificate';
+import { getNginxDeployInfo } from '../api/nginx';
 import { ParameterForm } from '../components/deployment/ParameterForm';
 import PageHeader from '../components/common/PageHeader';
 import MetricTile from '../components/common/MetricTile';
@@ -192,6 +193,17 @@ const DeploymentsPage: React.FC = () => {
   const handlePackageChange = (packageId: number) => {
     setSelectedPackageId(packageId);
     loadPackageMetadata(packageId);
+  };
+
+  const handleServerChange = async (serverId: number) => {
+    if (deployType !== 'certificate') return;
+    try {
+      const info = await getNginxDeployInfo(serverId);
+      const installDir = info.deploy_params?.NGINX_INSTALL_DIR || '/usr/local/nginx';
+      form.setFieldValue('target_path', installDir + '/ssl');
+    } catch {
+      form.setFieldValue('target_path', '/usr/local/nginx/ssl');
+    }
   };
 
   onCompleteRef.current = () => {
@@ -574,7 +586,7 @@ const DeploymentsPage: React.FC = () => {
                 </Col>
                 <Col span={12}>
                   <Form.Item name="server_id" label="目标服务器" rules={[{ required: true, message: '请选择目标服务器' }]} extra="部署会在这台服务器上执行">
-                    <Select placeholder="选择一台服务器">
+                    <Select placeholder="选择一台服务器" onChange={handleServerChange}>
                       {servers.map((server) => <Option key={server.id} value={server.id}>{server.name} ({server.host})</Option>)}
                     </Select>
                   </Form.Item>
@@ -609,8 +621,8 @@ const DeploymentsPage: React.FC = () => {
 
             <div className="config-section-card">
               <div className="config-section-card__title">执行选项</div>
-              <Form.Item name="target_path" label="部署目标路径" extra="留空时使用系统默认路径">
-                <Input placeholder={deployType === 'certificate' ? '/etc/nginx/ssl' : '/tmp'} className="mono" />
+              <Form.Item name="target_path" label="部署目标路径" extra="留空时根据服务器 Nginx 安装目录自动推导">
+                <Input placeholder={deployType === 'certificate' ? '{nginx安装目录}/ssl' : '/tmp'} className="mono" />
               </Form.Item>
               <Row gutter={16}>
                 <Col span={8}>
