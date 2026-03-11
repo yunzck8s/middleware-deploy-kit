@@ -119,6 +119,7 @@ export interface NginxLocation {
   proxy_max_temp_file_size?: string;
   enable_websocket?: boolean;
   enable_cors?: boolean;
+  disable_cache?: boolean;
   location_max_body_size?: string;
   root?: string;
   try_files?: string;

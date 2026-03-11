@@ -398,6 +398,23 @@ const DeploymentsPage: React.FC = () => {
       render: (value: string) => <StatusBadge status={value === 'package' ? 'info' : 'warning'} label={value === 'package' ? '离线包' : '证书'} compact />,
     },
     {
+      title: '安装目录',
+      key: 'install_dir',
+      width: 200,
+      render: (_, record) => {
+        let path = record.target_path;
+        if (record.type === 'package' && record.deploy_params) {
+          try {
+            const params = JSON.parse(record.deploy_params);
+            if (params.NGINX_INSTALL_DIR) path = params.NGINX_INSTALL_DIR;
+          } catch {
+            // keep target_path
+          }
+        }
+        return <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{path || '-'}</span>;
+      },
+    },
+    {
       title: '服务器',
       key: 'server',
       width: 180,

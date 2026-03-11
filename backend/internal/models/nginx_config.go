@@ -132,6 +132,7 @@ type NginxLocation struct {
 	ProxyMaxTempFileSize      string `json:"proxy_max_temp_file_size"`     // 代理最大临时文件大小
 	EnableWebsocket           bool   `json:"enable_websocket"`             // 是否启用 WebSocket
 	EnableCORS                bool   `json:"enable_cors"`                  // 是否启用 CORS
+	DisableCache              bool   `json:"disable_cache"`                // 禁用客户端缓存
 	LocationMaxBodySize       string `json:"location_max_body_size"`       // Location 级别最大请求体
 
 	// Redirect 配置

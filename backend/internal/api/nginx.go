@@ -789,6 +789,10 @@ http {
             add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
             add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
 {{end}}
+{{if .DisableCache}}
+            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+            expires off;
+{{end}}
 {{if .ProxyPass}}
             proxy_pass {{.ProxyPass}};
             proxy_set_header Host $http_host;
@@ -918,6 +922,10 @@ http {
             add_header Access-Control-Allow-Origin *;
             add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
             add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
+{{end}}
+{{if .DisableCache}}
+            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+            expires off;
 {{end}}
 {{if .ProxyPass}}
             proxy_pass {{.ProxyPass}};
