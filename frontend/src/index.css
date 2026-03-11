@@ -117,11 +117,11 @@
 
 html,
 body,
-#root {
+div#root {
   min-height: 100%;
 }
 
-#root {
+div#root {
   min-height: 100vh;
   isolation: isolate;
 }

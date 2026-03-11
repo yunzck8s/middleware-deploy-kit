@@ -40,6 +40,7 @@ const proxyDefaults: Partial<NginxLocation> = {
   proxy_next_upstream_timeout: '30s',
   enable_websocket: true,
   enable_cors: true,
+  disable_cache: true,
   location_max_body_size: '1024m',
 };
 
@@ -318,9 +319,18 @@ const LocationEditor: React.FC<LocationEditorProps> = ({ locations, onChange }) 
                               </Col>
                             </Row>
 
-                            <Form.Item name="enable_websocket" valuePropName="checked" label="WebSocket 支持" extra="启用后自动添加 Upgrade 和 Connection 头">
-                              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-                            </Form.Item>
+                            <Row gutter={16}>
+                              <Col span={12}>
+                                <Form.Item name="enable_websocket" valuePropName="checked" label="WebSocket 支持" extra="启用后自动添加 Upgrade 和 Connection 头">
+                                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                                </Form.Item>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Item name="disable_cache" valuePropName="checked" label="禁用客户端缓存" extra="响应头加 Cache-Control: no-store 与 expires off">
+                                  <Switch checkedChildren="禁用" unCheckedChildren="允许" />
+                                </Form.Item>
+                              </Col>
+                            </Row>
                           </div>
                         ),
                       }]}
