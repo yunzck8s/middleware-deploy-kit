@@ -7,11 +7,8 @@ nginx/libs/
 redis/repo/
 openssh_auto_install_10.0p2/libs/
 
-# 运行时数据（未来 Web 平台使用）
-backend/data/packages/
-backend/data/certificates/
-backend/data/logs/
-backend/data/*.db
+# 运行时数据
+backend/data/
 
 # Go
 backend/bin/
@@ -42,6 +39,11 @@ Thumbs.db
 
 # 工具目录
 .autonomous/
+.agents/
+.claude/
+
+# 技能锁文件
+skills-lock.json
 
 # 构建产物
 dist/
