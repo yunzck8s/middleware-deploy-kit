@@ -9,6 +9,7 @@ interface TerminalPanelProps {
   htmlContent: string;
   height?: number;
   onCopy?: () => void;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
 const TerminalPanel = ({
@@ -18,6 +19,7 @@ const TerminalPanel = ({
   htmlContent,
   height = 420,
   onCopy,
+  onScroll,
 }: TerminalPanelProps) => {
   return (
     <div className="terminal-panel">
@@ -39,6 +41,7 @@ const TerminalPanel = ({
         className="terminal-panel__body terminal-log"
         style={{ minHeight: height, maxHeight: height }}
         dangerouslySetInnerHTML={{ __html: htmlContent }}
+        onScroll={onScroll}
       />
     </div>
   );

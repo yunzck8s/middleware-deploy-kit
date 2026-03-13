@@ -398,7 +398,24 @@ func (a *DeploymentAPI) BatchCreate(c *gin.Context) {
 
 		// 如果设置了自动执行，则立即执行
 		if req.AutoExecute {
-			go a.executeDeployment(&deployment)
+			// 预加载所有关联，避免 nil 指针
+			db.DB.Preload("Server").Preload("Package").Preload("Certificate").Preload("NginxConfig").First(&deployment, deployment.ID)
+
+			// 创建执行上下文（与 Execute 函数相同的方式）
+			ctx, cancel := context.WithCancel(context.Background())
+			logChan := make(chan *models.DeploymentLog, 100)
+			done := make(chan struct{})
+
+			exec := &deploymentExecution{
+				deployment: &deployment,
+				ctx:        ctx,
+				cancel:     cancel,
+				logChan:    logChan,
+				done:       done,
+			}
+
+			deployMgr.Add(deployment.ID, exec)
+			go a.executeDeploymentWithContext(ctx, &deployment, logChan, done)
 		}
 	}
 

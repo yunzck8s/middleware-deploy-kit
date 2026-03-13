@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
+  Checkbox,
   Drawer,
   Form,
   Input,
@@ -8,7 +9,9 @@ import {
   Popconfirm,
   Row,
   Col,
+  Segmented,
   Select,
+  Space,
   Spin,
   Switch,
   Table,
@@ -28,6 +31,7 @@ import {
   RocketOutlined,
   CloudServerOutlined,
   InboxOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -39,6 +43,7 @@ import {
   getDeploymentLogs,
   rollbackDeployment,
   cancelDeployment,
+  batchCreateDeployment,
 } from '../api/deployment';
 import { useDeploymentLogs } from '../hooks/useDeploymentLogs';
 import { getServerList } from '../api/server';
@@ -89,7 +94,11 @@ const DeploymentsPage: React.FC = () => {
   const [historicalLogs, setHistoricalLogs] = useState<DeploymentLog[]>([]);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedServerIds, setSelectedServerIds] = useState<number[]>([]);
+  const [selectedDeploymentIds, setSelectedDeploymentIds] = useState<number[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
   const [form] = Form.useForm();
   const onCompleteRef = useRef<() => void>(() => {});
 
@@ -118,19 +127,27 @@ const DeploymentsPage: React.FC = () => {
   });
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [realtimeLogs, historicalLogs]);
+    if (autoScroll) {
+      logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [realtimeLogs, historicalLogs, autoScroll]);
 
-  const loadDeployments = async () => {
+  const handleLogScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
+    setAutoScroll(isAtBottom);
+  };
+
+  const loadDeployments = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await getDeploymentList({ page: 1, page_size: 1000 });
       setDeployments(response.deployments || []);
       setTotal(response.deployments?.length || 0);
     } catch (error: any) {
-      message.error(error.message || '暂时无法加载部署列表');
+      if (!silent) message.error(error.message || '暂时无法加载部署列表');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -153,6 +170,17 @@ const DeploymentsPage: React.FC = () => {
     loadDeployments();
     loadResources();
   }, []);
+
+  useEffect(() => {
+    const hasRunning = deployments.some((d) => d.status === 'running');
+    if (!hasRunning) return;
+
+    const timer = setInterval(() => {
+      loadDeployments(true);
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [deployments]);
 
   const loadHistoricalLogs = async (deploymentId: number) => {
     try {
@@ -274,6 +302,12 @@ const DeploymentsPage: React.FC = () => {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
+
+      if (batchMode && selectedServerIds.length === 0) {
+        message.error('请至少选择一台服务器');
+        return;
+      }
+
       setSubmitting(true);
       let deployParams: string | undefined;
 
@@ -286,10 +320,28 @@ const DeploymentsPage: React.FC = () => {
         deployParams = JSON.stringify(params);
       }
 
-      await createDeployment({ ...values, deploy_params: deployParams } as any);
-      message.success('部署任务已创建，可立即执行');
+      if (batchMode) {
+        await batchCreateDeployment({
+          server_ids: selectedServerIds,
+          name: values.name,
+          description: values.description,
+          type: deployType,
+          package_id: deployType === 'package' ? values.package_id : undefined,
+          certificate_id: deployType === 'certificate' ? values.certificate_id : undefined,
+          target_path: values.target_path,
+          deploy_params: deployParams,
+          auto_execute: false,
+        });
+        message.success(`成功创建 ${selectedServerIds.length} 个部署任务`);
+      } else {
+        await createDeployment({ ...values, deploy_params: deployParams } as any);
+        message.success('部署任务已创建，可立即执行');
+      }
+
       setModalVisible(false);
       form.resetFields();
+      setBatchMode(false);
+      setSelectedServerIds([]);
       setPackageMetadata(null);
       setSelectedPackageId(null);
       loadDeployments();
@@ -319,6 +371,49 @@ const DeploymentsPage: React.FC = () => {
     } catch (error: any) {
       message.error(error.message || '删除部署任务失败');
     }
+  };
+
+  const handleBatchExecute = async () => {
+    if (selectedDeploymentIds.length === 0) {
+      message.warning('请先选择要执行的任务');
+      return;
+    }
+    try {
+      for (const id of selectedDeploymentIds) {
+        await executeDeployment(id);
+      }
+      message.success(`已启动 ${selectedDeploymentIds.length} 个部署任务`);
+      setSelectedDeploymentIds([]);
+      loadDeployments();
+    } catch (error: any) {
+      message.error(error.message || '批量执行失败');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedDeploymentIds.length === 0) {
+      message.warning('请先选择要删除的任务');
+      return;
+    }
+    Modal.confirm({
+      title: '确认批量删除',
+      content: `确定要删除选中的 ${selectedDeploymentIds.length} 个部署任务吗？删除后任务记录和日志将一并移除，此操作不可恢复。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          for (const id of selectedDeploymentIds) {
+            await deleteDeployment(id);
+          }
+          message.success(`已删除 ${selectedDeploymentIds.length} 个部署任务`);
+          setSelectedDeploymentIds([]);
+          loadDeployments();
+        } catch (error: any) {
+          message.error(error.message || '批量删除失败');
+        }
+      },
+    });
   };
 
   const handleRollback = async (record: Deployment) => {
@@ -487,7 +582,7 @@ const DeploymentsPage: React.FC = () => {
         subtitle="在一个视图里创建、执行、取消和回滚部署，并持续查看实时日志。"
         actions={(
           <ActionGroup>
-            <Button icon={<ReloadOutlined />} onClick={loadDeployments}>刷新</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => loadDeployments()}>刷新</Button>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -496,6 +591,8 @@ const DeploymentsPage: React.FC = () => {
                 setDeployType('package');
                 setPackageMetadata(null);
                 setSelectedPackageId(null);
+                setBatchMode(false);
+                setSelectedServerIds([]);
                 setModalVisible(true);
               }}
             >
@@ -545,24 +642,40 @@ const DeploymentsPage: React.FC = () => {
         {filteredDeployments.length === 0 && !loading ? (
           <EmptyState title="还没有部署任务" description="从离线包或证书新建一个部署任务，然后在这里跟踪执行进度和日志。" action={<Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>新建第一个部署任务</Button>} />
         ) : (
-          <Table
-            columns={columns}
-            dataSource={filteredDeployments}
-            rowKey="id"
-            loading={loading}
-            size="middle"
-            pagination={{
-              current: page,
-              pageSize,
-              total: filteredDeployments.length,
-              showSizeChanger: true,
-              showTotal: (count) => `共 ${count} 条任务`,
-              onChange: (currentPage, currentPageSize) => {
-                setPage(currentPage);
-                setPageSize(currentPageSize);
-              },
-            }}
-          />
+          <>
+            {selectedDeploymentIds.length > 0 && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>已选择 {selectedDeploymentIds.length} 个任务</span>
+                <Space>
+                  <Button icon={<PlayCircleOutlined />} onClick={handleBatchExecute}>批量执行</Button>
+                  <Button danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>批量删除</Button>
+                  <Button onClick={() => setSelectedDeploymentIds([])}>取消选择</Button>
+                </Space>
+              </div>
+            )}
+            <Table
+              columns={columns}
+              dataSource={filteredDeployments}
+              rowKey="id"
+              loading={loading}
+              size="middle"
+              rowSelection={{
+                selectedRowKeys: selectedDeploymentIds,
+                onChange: (keys) => setSelectedDeploymentIds(keys as number[]),
+              }}
+              pagination={{
+                current: page,
+                pageSize,
+                total: filteredDeployments.length,
+                showSizeChanger: true,
+                showTotal: (count) => `共 ${count} 条任务`,
+                onChange: (currentPage, currentPageSize) => {
+                  setPage(currentPage);
+                  setPageSize(currentPageSize);
+                },
+              }}
+            />
+          </>
         )}
       </SectionCard>
 
@@ -580,6 +693,43 @@ const DeploymentsPage: React.FC = () => {
           initialValues={{ type: 'package', backup_enabled: true, restart_service: false }}
         >
           <div className="page-stack" style={{ gap: 16 }}>
+            <div className="config-section-card" style={{ background: 'var(--bg-elevated)', border: '2px solid var(--border-color)', padding: '16px' }}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>部署模式</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>单服务器或批量部署</div>
+              </div>
+              <Segmented
+                value={batchMode ? 'batch' : 'single'}
+                onChange={(value) => {
+                  const isBatch = value === 'batch';
+                  setBatchMode(isBatch);
+                  form.setFieldValue('server_id', undefined);
+                  setSelectedServerIds([]);
+                }}
+                block
+                options={[
+                  {
+                    label: (
+                      <div style={{ padding: '4px 0' }}>
+                        <CloudServerOutlined style={{ fontSize: 16, marginRight: 6 }} />
+                        <span>单服务器</span>
+                      </div>
+                    ),
+                    value: 'single',
+                  },
+                  {
+                    label: (
+                      <div style={{ padding: '4px 0' }}>
+                        <AppstoreOutlined style={{ fontSize: 16, marginRight: 6 }} />
+                        <span>批量部署</span>
+                      </div>
+                    ),
+                    value: 'batch',
+                  },
+                ]}
+              />
+            </div>
+
             <div className="config-section-card">
               <div className="config-section-card__title">基本信息</div>
               <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]} extra="建议写清环境、对象和动作，方便后续排查">
@@ -602,11 +752,30 @@ const DeploymentsPage: React.FC = () => {
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="server_id" label="目标服务器" rules={[{ required: true, message: '请选择目标服务器' }]} extra="部署会在这台服务器上执行">
-                    <Select placeholder="选择一台服务器" onChange={handleServerChange}>
-                      {servers.map((server) => <Option key={server.id} value={server.id}>{server.name} ({server.host})</Option>)}
-                    </Select>
-                  </Form.Item>
+                  {!batchMode ? (
+                    <Form.Item name="server_id" label="目标服务器" rules={[{ required: true, message: '请选择目标服务器' }]} extra="部署会在这台服务器上执行">
+                      <Select placeholder="选择一台服务器" onChange={handleServerChange}>
+                        {servers.map((server) => <Option key={server.id} value={server.id}>{server.name} ({server.host})</Option>)}
+                      </Select>
+                    </Form.Item>
+                  ) : (
+                    <Form.Item label="目标服务器" required extra="选择要批量部署的服务器">
+                      <Checkbox.Group
+                        value={selectedServerIds}
+                        onChange={(values) => setSelectedServerIds(values as number[])}
+                        style={{ width: '100%' }}
+                      >
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          {servers.map((server) => (
+                            <Checkbox key={server.id} value={server.id}>
+                              {server.name} ({server.host})
+                            </Checkbox>
+                          ))}
+                        </Space>
+                      </Checkbox.Group>
+                      {selectedServerIds.length === 0 && <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 4 }}>请至少选择一台服务器</div>}
+                    </Form.Item>
+                  )}
                 </Col>
               </Row>
 
@@ -722,6 +891,7 @@ const DeploymentsPage: React.FC = () => {
             htmlContent={renderTerminalContent()}
             height={500}
             onCopy={currentLogs.length ? handleCopyLogs : undefined}
+            onScroll={handleLogScroll}
           />
           <div ref={logEndRef} />
           {logsLoading && <Spin tip="正在加载日志..." />}

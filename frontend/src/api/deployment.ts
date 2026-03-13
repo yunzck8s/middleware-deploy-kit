@@ -75,3 +75,22 @@ export const cancelDeployment = async (id: number): Promise<{ message: string }>
   const response = await client.post<ApiResponse<{ message: string }>>(`/deployments/${id}/cancel`);
   return (response as unknown as ApiResponse<{ message: string }>).data!;
 };
+
+// 批量创建部署任务
+export interface BatchDeploymentData {
+  server_ids: number[];
+  name: string;
+  description?: string;
+  type: DeploymentType;
+  nginx_config_id?: number;
+  package_id?: number;
+  certificate_id?: number;
+  target_path?: string;
+  deploy_params?: string;
+  auto_execute: boolean;
+}
+
+export const batchCreateDeployment = async (data: BatchDeploymentData): Promise<Deployment[]> => {
+  const response = await client.post<ApiResponse<Deployment[]>>('/deployments/batch', data);
+  return (response as unknown as ApiResponse<Deployment[]>).data!;
+};

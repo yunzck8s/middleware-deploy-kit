@@ -150,6 +150,9 @@ metadata.json → API → frontend ParameterForm → deploy_params JSON → back
 - **Deployment cancellation**: Go context.Context cancellation, checked between steps via `ctx.Done()`
 - **Adding new routes**: All routes registered in `setupRoutes()` in `cmd/server/main.go`, grouped under `/api/v1` with `AuthMiddleware` applied per group
 - **Adding new pages**: Create page in `src/pages/`, add route in `App.tsx`, add menu item in `Layout.tsx`
+- **Nginx path resolution**: Use `inferNginxInstallDir(serverID)` in `internal/api/nginx.go` to dynamically resolve nginx install directory instead of hardcoding paths. Certificate deployment paths auto-fill as `{installDir}/ssl`. SSL certificate paths in generated nginx.conf use remote server paths (`{installDir}/ssl/{filename}`) not local management platform paths.
+- **Manual config override**: `NginxConfig.ManualConfig` field takes precedence over auto-generated config in `executeApplyConfig()`. Frontend ConfigPreview component supports edit/preview toggle mode.
+- **Proxy defaults**: Location proxy settings use production-grade defaults (30s connect timeout, 300s send/read timeout, 1024m file sizes, WebSocket + CORS enabled). All 16 proxy directives are configurable via LocationEditor UI with collapsible advanced settings panel.
 
 ## Workflow Orchestration
 
