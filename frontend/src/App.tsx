@@ -15,6 +15,8 @@ import Certificates from './pages/Certificates';
 import Servers from './pages/Servers';
 import NginxConfig from './pages/NginxConfig';
 import Deployments from './pages/Deployments';
+import Notifications from './pages/Notifications';
+import SystemConfig from './pages/SystemConfig';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
@@ -152,6 +154,8 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="servers" element={<Servers />} />
+            <Route path="notifications" element={<Notifications />} />
+            <Route path="system-config" element={<SystemConfig />} />
             <Route path="middleware/nginx/packages" element={<Middleware />} />
             <Route path="middleware/nginx/certificates" element={<Certificates />} />
             <Route path="middleware/nginx/configs" element={<NginxConfig />} />

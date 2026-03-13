@@ -21,6 +21,7 @@ import {
   SearchOutlined,
   WarningOutlined,
   ClockCircleOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -39,6 +40,7 @@ import ActionGroup from '../components/common/ActionGroup';
 import EmptyState from '../components/common/EmptyState';
 import StatusBadge from '../components/common/StatusBadge';
 import { formatDateTime } from '../utils/formatters';
+import AlertConfigDrawer from '../components/certificates/AlertConfigDrawer';
 
 const Certificates: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -52,6 +54,8 @@ const Certificates: React.FC = () => {
   const [keyFile, setKeyFile] = useState<UploadFile | null>(null);
   const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm();
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertCertId, setAlertCertId] = useState<number | null>(null);
 
   const loadCertificates = async () => {
     try {
@@ -211,6 +215,9 @@ const Certificates: React.FC = () => {
       width: 160,
       render: (_, record) => (
         <Space>
+          <Tooltip title="告警配置">
+            <Button type="text" icon={<BellOutlined />} size="small" onClick={() => { setAlertCertId(record.id); setAlertVisible(true); }} />
+          </Tooltip>
           <Tooltip title="下载证书文件">
             <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'cert', record.name)} aria-label="下载证书文件" />
           </Tooltip>
@@ -339,6 +346,12 @@ const Certificates: React.FC = () => {
           </Form.Item>
         </Form>
       </Drawer>
+
+      <AlertConfigDrawer
+        visible={alertVisible}
+        certificateId={alertCertId}
+        onClose={() => setAlertVisible(false)}
+      />
     </div>
   );
 };

@@ -23,6 +23,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { logout as logoutAction } from '../../store/authSlice';
 import { logout as logoutAPI } from '../../api/auth';
 import ThemeToggle from './ThemeToggle';
+import NotificationBell from './NotificationBell';
 
 const { Sider, Content } = AntLayout;
 
@@ -37,6 +38,8 @@ interface RouteMeta {
 const routes: RouteMeta[] = [
   { match: '/', title: '概览', path: '/' },
   { match: '/servers', title: '服务器', path: '/servers' },
+  { match: '/notifications', title: '通知中心', path: '/notifications' },
+  { match: '/system-config', title: '系统配置', path: '/system-config' },
   { match: '/middleware/nginx/packages', title: '离线包', path: '/middleware/nginx/packages' },
   { match: '/middleware/nginx/certificates', title: 'SSL 证书', path: '/middleware/nginx/certificates' },
   { match: '/middleware/nginx/configs', title: '配置管理', path: '/middleware/nginx/configs' },
@@ -51,6 +54,8 @@ const menuItems: MenuProps['items'] = [
   { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL 证书' },
   { key: '/middleware/nginx/configs', icon: <FileTextOutlined />, label: '配置管理' },
   { key: '/middleware/nginx/deployments', icon: <RocketOutlined />, label: '部署管理' },
+  { type: 'divider' },
+  { key: '/system-config', icon: <SettingOutlined />, label: '系统配置' },
 ];
 
 const MainLayout = () => {
@@ -224,6 +229,9 @@ const MainLayout = () => {
           background: 'transparent',
         }}
       >
+        <div style={{ position: 'fixed', top: 24, right: 28, zIndex: 1000 }}>
+          <NotificationBell />
+        </div>
         <Content className="shell-content" style={{ padding: isMobile ? '16px' : '24px 28px 28px', background: 'transparent' }}>
           {isMobile && (
             <div style={{ marginBottom: 16 }}>

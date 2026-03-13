@@ -17,6 +17,7 @@ export interface DashboardStats {
   successRate: number;
   certificatesTotal: number;
   certificatesExpiringSoon: number;
+  certificatesExpired: number;
   configsTotal: number;
   trendData: {
     dates: string[];
@@ -59,6 +60,7 @@ export const useDashboardData = () => {
 
       const certificates = certsRes.certificates || [];
       const certificatesTotal = certificates.filter((certificate) => certificate.status !== 'expired').length;
+      const certificatesExpired = certificates.filter((certificate) => certificate.status === 'expired').length;
       const now = new Date();
       const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
       const certificatesExpiringSoon = certificates.filter((certificate) => {
@@ -109,6 +111,7 @@ export const useDashboardData = () => {
         successRate,
         certificatesTotal,
         certificatesExpiringSoon,
+        certificatesExpired,
         configsTotal: configsRes.total || 0,
         trendData,
         statusData,

@@ -64,6 +64,10 @@ func AutoMigrate() error {
 		&models.DeploymentLog{},
 		&models.DeploymentScript{},
 		&models.DeploymentHook{},
+		&models.Notification{},
+		&models.CertificateAlertConfig{},
+		&models.CertificateAlertLog{},
+		&models.SystemConfig{},
 	)
 }
 

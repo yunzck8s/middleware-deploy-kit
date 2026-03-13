@@ -11,6 +11,8 @@ import (
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/api"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/config"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/db"
+	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/scheduler"
+	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/service"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/logger"
 )
 
@@ -30,6 +32,12 @@ func main() {
 		logger.Fatalf("数据库初始化失败: %v", err)
 	}
 	defer db.Close()
+
+	// 启动调度器
+	notificationService := service.NewNotificationService()
+	sched := scheduler.NewScheduler(notificationService)
+	sched.Start()
+	defer sched.Stop()
 
 	// 创建Gin引擎
 	gin.SetMode(gin.ReleaseMode)
@@ -106,6 +114,25 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 		certificates.GET("/:id/download", certAPI.Download) // 下载证书文件
 		certificates.DELETE("/:id", certAPI.Delete)         // 删除证书
 	}
+
+	// 通知管理 API
+	notificationAPI := api.NewNotificationAPI(cfg)
+	v1.GET("/notifications", api.AuthMiddleware(cfg), notificationAPI.List)
+	v1.GET("/notifications/unread-count", api.AuthMiddleware(cfg), notificationAPI.GetUnreadCount)
+	v1.PUT("/notifications/:id/read", api.AuthMiddleware(cfg), notificationAPI.MarkRead)
+	v1.DELETE("/notifications/:id", api.AuthMiddleware(cfg), notificationAPI.Delete)
+
+	// 证书告警配置 API
+	alertAPI := api.NewCertificateAlertAPI(cfg)
+	v1.POST("/certificate-alerts", api.AuthMiddleware(cfg), alertAPI.CreateOrUpdate)
+	v1.GET("/certificate-alerts/:certificate_id", api.AuthMiddleware(cfg), alertAPI.Get)
+
+	// 系统配置 API
+	configAPI := api.NewSystemConfigAPI(cfg)
+	v1.POST("/system-config", api.AuthMiddleware(cfg), configAPI.Set)
+	v1.GET("/system-config/:key", api.AuthMiddleware(cfg), configAPI.Get)
+	v1.POST("/system-config/test-smtp", api.AuthMiddleware(cfg), configAPI.TestSMTP)
+	v1.POST("/system-config/test-webhook", api.AuthMiddleware(cfg), configAPI.TestWebhook)
 
 	// 服务器管理 API
 	serverAPI := api.NewServerAPI(cfg)

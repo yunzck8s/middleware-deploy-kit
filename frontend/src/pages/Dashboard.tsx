@@ -215,6 +215,15 @@ const Dashboard = () => {
                   : '当前没有需要立即处理的到期风险。'}
               </div>
             </div>
+            <div className="summary-card" style={{ borderColor: 'rgba(239, 68, 68, 0.2)', marginTop: 12 }}>
+              <div className="summary-card__label">已过期证书</div>
+              <div className="summary-card__value" style={{ color: 'var(--color-danger)' }}>{stats?.certificatesExpired || 0}</div>
+              <div className="summary-card__hint">
+                {(stats?.certificatesExpired || 0) > 0
+                  ? '需要尽快移除或更新，避免服务中断。'
+                  : '当前没有已过期的证书。'}
+              </div>
+            </div>
             <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-secondary)' }}>
               <WarningOutlined style={{ color: 'var(--color-warning)' }} />
               到期风险根据当前证书有效期自动计算。

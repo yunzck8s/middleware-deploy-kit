@@ -69,8 +69,10 @@ npx vitest --run --coverage                      # test coverage report
 
 ### Backend (`backend/`)
 - **Entry**: `cmd/server/main.go` — Gin router setup, all route registration in `setupRoutes()`
-- **API handlers**: `internal/api/` — resource-based files (nginx.go, deployment.go, server.go, certificate.go, package.go, auth.go)
+- **API handlers**: `internal/api/` — resource-based files (nginx.go, deployment.go, server.go, certificate.go, package.go, auth.go, notification.go, certificate_alert.go, system_config.go)
 - **Models**: `internal/models/` — GORM models with SQLite, auto-migrated in `internal/db/db.go`
+- **Services**: `internal/service/` — business logic (notification.go, email.go, webhook.go)
+- **Scheduler**: `internal/scheduler/scheduler.go` — cron-like task scheduler, runs certificate expiry checks daily at 2:00 AM
 - **Config**: `internal/config/config.go` — hardcoded defaults (no config file), DSN at `./data/deploy.db`
 - **Auth**: JWT-based, middleware in `internal/api/middleware.go`, token utils in `internal/utils/jwt.go`
 - **Response helper**: `pkg/response/response.go` — standardized `{code, message, data}` JSON responses
@@ -80,7 +82,8 @@ npx vitest --run --coverage                      # test coverage report
 - **Stack**: React 19.2, TypeScript 5.9, Ant Design 6, Redux Toolkit 2.11, React Router 7.9, Vite 7.2, ECharts 5
 - **API layer**: `src/api/client.ts` — Axios instance with JWT interceptor; per-resource API files in `src/api/`
 - **State**: Redux store in `src/store/` — only `authSlice` (user, token, isAuthenticated)
-- **Pages**: `src/pages/` — Dashboard, Deployments, Servers, NginxConfig, Certificates, Middleware, Login
+- **Pages**: `src/pages/` — Dashboard, Deployments, Servers, NginxConfig, Certificates, Middleware, Login, Notifications, SystemConfig
+- **Components**: `src/components/` — reusable UI components, certificate alert drawer, notification bell
 - **Types**: `src/types/index.ts` — all TypeScript interfaces in a single file
 - **Theme**: Dark/light dual theme via CSS variables (`[data-theme]` attribute) + Ant Design ConfigProvider algorithm switching. `useTheme` hook persists preference to localStorage.
 - **Tests**: Vitest + jsdom + React Testing Library, setup in `src/test/setup.ts` (mocks localStorage, matchMedia, IntersectionObserver)
@@ -117,6 +120,7 @@ metadata.json → API → frontend ParameterForm → deploy_params JSON → back
 - **Manual config override**: `NginxConfig.ManualConfig` field takes precedence over auto-generated config in `executeApplyConfig()`. Frontend ConfigPreview component supports edit/preview toggle mode.
 - **Proxy defaults**: Location proxy settings use production-grade defaults (30s connect timeout, 300s send/read timeout, 1024m file sizes, WebSocket + CORS enabled). All 16 proxy directives are configurable via LocationEditor UI with collapsible advanced settings panel.
 - **Batch deployment**: Deployments page supports single-server and multi-server batch deployment modes. Batch mode uses Segmented component for mode selection, Checkbox.Group for server selection, and supports batch operations (execute/delete) with confirmation dialogs. Real-time logs use SSE with smart auto-scrolling that respects user scroll position. Background polling (5s interval) updates deployment status silently without UI flicker.
+- **Certificate expiry notifications**: Multi-channel notification system (internal + email + webhook) with per-certificate alert configuration. Scheduler runs daily at 2:00 AM to check certificates against configured thresholds (e.g., 30/7/1 days). Deduplication via `CertificateAlertLog` prevents repeated alerts on same day. SMTP config in `SystemConfig` table, webhook supports enterprise WeChat format (`msgtype: "text"`). Frontend: `NotificationBell` in header, `Notifications` page, `AlertConfigDrawer` in certificates page, certificate risk card in dashboard.
 
 ## Testing
 
@@ -127,4 +131,4 @@ metadata.json → API → frontend ParameterForm → deploy_params JSON → back
 
 ## Current Status
 
-Backend and frontend are feature-complete (stages 1-8). Batch deployment functionality is complete with UI optimization and real-time log fixes. Remaining: end-to-end testing (stage 9) and production deployment preparation (stage 10).
+Backend and frontend are feature-complete. SSL certificate expiry notification system fully implemented with multi-channel alerts (internal/email/webhook), scheduler, and per-certificate configuration. Batch deployment functionality complete with UI optimization and real-time log fixes.
