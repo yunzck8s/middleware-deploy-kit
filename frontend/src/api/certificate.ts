@@ -54,6 +54,26 @@ export const deleteCertificate = async (id: number): Promise<void> => {
   await client.delete<ApiResponse<void>>(`/certificates/${id}`);
 };
 
+// 更新证书
+export const updateCertificate = async (
+  id: number,
+  certFile: File,
+  keyFile: File,
+  autoDeploy: boolean = true
+): Promise<any> => {
+  const formData = new FormData();
+  formData.append('cert_file', certFile);
+  formData.append('key_file', keyFile);
+  formData.append('auto_deploy', String(autoDeploy));
+
+  const response = await client.put<ApiResponse<any>>(`/certificates/${id}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return (response as unknown as ApiResponse<any>).data!;
+};
+
 // 下载证书文件
 export const downloadCertificateFile = async (id: number, type: 'cert' | 'key'): Promise<Blob> => {
   const response = await client.get(`/certificates/${id}/download`, {

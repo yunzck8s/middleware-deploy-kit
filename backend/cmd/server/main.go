@@ -112,6 +112,7 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 		certificates.GET("", certAPI.List)                  // 获取证书列表
 		certificates.GET("/:id", certAPI.Get)               // 获取证书详情
 		certificates.GET("/:id/download", certAPI.Download) // 下载证书文件
+		certificates.PUT("/:id", certAPI.Update)            // 更新证书
 		certificates.DELETE("/:id", certAPI.Delete)         // 删除证书
 	}
 

@@ -11,6 +11,7 @@ import {
   Space,
   Progress,
   Tooltip,
+  Switch,
 } from 'antd';
 import {
   UploadOutlined,
@@ -30,6 +31,7 @@ import {
   uploadCertificate,
   deleteCertificate,
   downloadCertificateFile,
+  updateCertificate,
 } from '../api/certificate';
 import type { Certificate } from '../types';
 import PageHeader from '../components/common/PageHeader';
@@ -56,6 +58,15 @@ const Certificates: React.FC = () => {
   const [form] = Form.useForm();
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertCertId, setAlertCertId] = useState<number | null>(null);
+
+  // 更新证书相关状态
+  const [updateVisible, setUpdateVisible] = useState(false);
+  const [updateCertId, setUpdateCertId] = useState<number | null>(null);
+  const [updateCertFile, setUpdateCertFile] = useState<UploadFile | null>(null);
+  const [updateKeyFile, setUpdateKeyFile] = useState<UploadFile | null>(null);
+  const [autoDeploy, setAutoDeploy] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [updateForm] = Form.useForm();
 
   const loadCertificates = async () => {
     try {
@@ -155,6 +166,44 @@ const Certificates: React.FC = () => {
     }
   };
 
+  const handleUpdate = async () => {
+    if (!updateCertId || !updateCertFile || !updateKeyFile) {
+      message.error('请选择新的证书文件和私钥文件');
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      const result = await updateCertificate(
+        updateCertId,
+        updateCertFile.originFileObj as File,
+        updateKeyFile.originFileObj as File,
+        autoDeploy
+      );
+
+      message.success('证书更新成功');
+
+      // 显示部署结果
+      if (result.deploy_results && Object.keys(result.deploy_results).length > 0) {
+        const deployMsg = Object.entries(result.deploy_results)
+          .map(([server, status]) => `${server}: ${status}`)
+          .join('\n');
+        message.info(`部署结果:\n${deployMsg}`, 5);
+      }
+
+      setUpdateVisible(false);
+      setUpdateCertId(null);
+      setUpdateCertFile(null);
+      setUpdateKeyFile(null);
+      updateForm.resetFields();
+      loadCertificates();
+    } catch (error: any) {
+      message.error(error.message || '证书更新失败');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const columns: ColumnsType<Certificate> = [
     {
       title: '证书资产',
@@ -215,6 +264,17 @@ const Certificates: React.FC = () => {
       width: 160,
       render: (_, record) => (
         <Space>
+          <Tooltip title="更新证书">
+            <Button
+              type="text"
+              icon={<ReloadOutlined />}
+              size="small"
+              onClick={() => {
+                setUpdateCertId(record.id);
+                setUpdateVisible(true);
+              }}
+            />
+          </Tooltip>
           <Tooltip title="告警配置">
             <Button type="text" icon={<BellOutlined />} size="small" onClick={() => { setAlertCertId(record.id); setAlertVisible(true); }} />
           </Tooltip>
@@ -224,7 +284,7 @@ const Certificates: React.FC = () => {
           <Tooltip title="下载私钥文件">
             <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'key', record.name)} aria-label="下载私钥文件" />
           </Tooltip>
-          <Popconfirm title={`删除证书“${record.name}”后，已关联的配置不会自动替换。确定删除吗？`} onConfirm={() => handleDelete(record.id)} okText="删除" cancelText="取消">
+          <Popconfirm title={`删除证书"${record.name}"后，已关联的配置不会自动替换。确定删除吗？`} onConfirm={() => handleDelete(record.id)} okText="删除" cancelText="取消">
             <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除证书" />
           </Popconfirm>
         </Space>
@@ -352,6 +412,52 @@ const Certificates: React.FC = () => {
         certificateId={alertCertId}
         onClose={() => setAlertVisible(false)}
       />
+
+      <Drawer
+        title="更新证书"
+        open={updateVisible}
+        onClose={() => {
+          setUpdateVisible(false);
+          setUpdateCertId(null);
+          setUpdateCertFile(null);
+          setUpdateKeyFile(null);
+          updateForm.resetFields();
+        }}
+        width={520}
+        extra={<Button type="primary" loading={updating} onClick={handleUpdate}>确认更新</Button>}
+      >
+        <Form form={updateForm} layout="vertical">
+          <Form.Item label="新证书文件 (.crt / .pem)" required extra="上传新的证书文件，支持 .crt 或 .pem">
+            <Upload
+              beforeUpload={(file) => {
+                setUpdateCertFile({ uid: file.name, name: file.name, status: 'done', originFileObj: file as any });
+                return false;
+              }}
+              fileList={updateCertFile ? [updateCertFile] : []}
+              onRemove={() => setUpdateCertFile(null)}
+              maxCount={1}
+            >
+              <Button icon={<UploadOutlined />}>选择新证书</Button>
+            </Upload>
+          </Form.Item>
+          <Form.Item label="新私钥文件 (.key)" required extra="上传与新证书配套的私钥文件">
+            <Upload
+              beforeUpload={(file) => {
+                setUpdateKeyFile({ uid: file.name, name: file.name, status: 'done', originFileObj: file as any });
+                return false;
+              }}
+              fileList={updateKeyFile ? [updateKeyFile] : []}
+              onRemove={() => setUpdateKeyFile(null)}
+              maxCount={1}
+            >
+              <Button icon={<UploadOutlined />}>选择新私钥</Button>
+            </Upload>
+          </Form.Item>
+          <Form.Item label="自动部署到服务器" extra="开启后，新证书会自动部署到所有使用该证书的服务器并重载 Nginx">
+            <Switch checked={autoDeploy} onChange={setAutoDeploy} />
+          </Form.Item>
+        </Form>
+      </Drawer>
     </div>
   );
 };
