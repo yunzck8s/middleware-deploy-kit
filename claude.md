@@ -65,6 +65,20 @@ npx vitest --run --coverage                      # test coverage report
 ### Default credentials
 - Username: `admin` / Password: `admin123`
 
+### Production Build
+```bash
+# 双架构构建（amd64 + arm64）
+./scripts/build.sh
+
+# 单架构构建
+ARCH=arm64 ./scripts/build.sh
+ARCH=amd64 ./scripts/build.sh
+
+# 指定版本
+VERSION=1.1.0 ./scripts/build.sh
+```
+产物输出到 `dist/middleware-deploy-kit-v{VERSION}-linux-{arch}.tar.gz`
+
 ## Architecture
 
 ### Backend (`backend/`)
@@ -73,7 +87,7 @@ npx vitest --run --coverage                      # test coverage report
 - **Models**: `internal/models/` — GORM models with SQLite, auto-migrated in `internal/db/db.go`
 - **Services**: `internal/service/` — business logic (notification.go, email.go, webhook.go)
 - **Scheduler**: `internal/scheduler/scheduler.go` — cron-like task scheduler, runs certificate expiry checks daily at 2:00 AM
-- **Config**: `internal/config/config.go` — hardcoded defaults (no config file), DSN at `./data/deploy.db`
+- **Config**: `internal/config/config.go` — env-based defaults (no config file), DSN at `./data/deploy.db`. Key env vars: `SERVER_HOST` (default `0.0.0.0`), `SERVER_PORT` (default `8080`), `JWT_SECRET` (auto-generated), `DATA_DIR` (default `./data`)
 - **Auth**: JWT-based, middleware in `internal/api/middleware.go`, token utils in `internal/utils/jwt.go`
 - **Response helper**: `pkg/response/response.go` — standardized `{code, message, data}` JSON responses
 - **Go module path**: `github.com/yunzck8s/middleware-deploy-kit/backend`
@@ -120,15 +134,15 @@ metadata.json → API → frontend ParameterForm → deploy_params JSON → back
 - **Manual config override**: `NginxConfig.ManualConfig` field takes precedence over auto-generated config in `executeApplyConfig()`. Frontend ConfigPreview component supports edit/preview toggle mode.
 - **Proxy defaults**: Location proxy settings use production-grade defaults (30s connect timeout, 300s send/read timeout, 1024m file sizes, WebSocket + CORS enabled). All 16 proxy directives are configurable via LocationEditor UI with collapsible advanced settings panel.
 - **Batch deployment**: Deployments page supports single-server and multi-server batch deployment modes. Batch mode uses Segmented component for mode selection, Checkbox.Group for server selection, and supports batch operations (execute/delete) with confirmation dialogs. Real-time logs use SSE with smart auto-scrolling that respects user scroll position. Background polling (5s interval) updates deployment status silently without UI flicker.
+- **Certificate update & auto-deploy**: `PUT /certificates/:id` accepts new cert/key files, performs atomic replacement locally (write .tmp → rename), then auto-deploys to all servers using that certificate via SSH/SFTP (also atomic: upload .tmp → `sudo mv`). Runs `sudo nginx -t` before `sudo nginx -s reload`. Uses `which nginx` to detect install path on package-managed hosts. All remote commands use `sudo` for non-root SSH users.
 - **Certificate expiry notifications**: Multi-channel notification system (internal + email + webhook) with per-certificate alert configuration. Scheduler runs daily at 2:00 AM to check certificates against configured thresholds (e.g., 30/7/1 days). Deduplication via `CertificateAlertLog` prevents repeated alerts on same day. SMTP config in `SystemConfig` table, webhook supports enterprise WeChat format (`msgtype: "text"`). Frontend: `NotificationBell` in header, `Notifications` page, `AlertConfigDrawer` in certificates page, certificate risk card in dashboard.
 
 ## Testing
 
 - Run `npm run build` (frontend) and `go build ./...` (backend) to verify compilation
 - Run `npx vitest --run` (frontend) and `go test ./...` (backend) to verify tests pass
-- Check for Pydantic model compatibility when adding new task types or fields
 - Test authentication, validation, and API handler code after modifications
 
 ## Current Status
 
-Backend and frontend are feature-complete. SSL certificate expiry notification system fully implemented with multi-channel alerts (internal/email/webhook), scheduler, and per-certificate configuration. Batch deployment functionality complete with UI optimization and real-time log fixes.
+Backend and frontend are feature-complete. SSL certificate management includes upload, update with atomic replacement, and auto-deploy to remote servers. Multi-channel expiry alerts (internal/email/webhook) with scheduler and per-certificate configuration. Batch deployment with real-time SSE logs. Production build supports amd64 and arm64 dual-architecture output.
