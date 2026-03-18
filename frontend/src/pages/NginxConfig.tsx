@@ -148,6 +148,17 @@ const NginxConfigPage: React.FC = () => {
 
   return (
     <div className="page-stack">
+      <style>{`
+        .nginx-config-card {
+          transition: transform var(--motion-fast, 0.15s) ease,
+                      box-shadow var(--motion-fast, 0.15s) ease;
+          cursor: pointer;
+        }
+        .nginx-config-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+        }
+      `}</style>
       <PageHeader
         eyebrow="Nginx 配置管理"
         title="配置管理"
@@ -199,8 +210,11 @@ const NginxConfigPage: React.FC = () => {
                 const locationCount = (config.server_blocks && config.server_blocks.length > 0)
                   ? config.server_blocks.reduce((sum, b) => sum + (b.locations?.length || 0), 0)
                   : (config.locations?.length || 0);
+                const statusAccent = config.status === 'applied' ? '#22c55e' : '#6366f1';
                 return (
-                  <div key={config.id} className="resource-card">
+                  <div key={config.id} className="resource-card nginx-config-card" style={{
+                    borderTop: `3px solid ${statusAccent}`,
+                  }}>
                     <div className="resource-card__header">
                       <div>
                         <div className="resource-card__title">{config.name}</div>

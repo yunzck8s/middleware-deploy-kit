@@ -1198,14 +1198,45 @@ const redisTypeColors: Record<string, string> = {
   hash: 'red',
 };
 
+// 类型精确 hex 色（用于自定义 badge）
+const redisTypeHex: Record<string, string> = {
+  string: '#3b82f6',
+  list:   '#22c55e',
+  set:    '#f59e0b',
+  zset:   '#a855f7',
+  hash:   '#ef4444',
+  unknown:'#71717a',
+};
+
 // 类型图标映射
 const redisTypeIcons: Record<string, string> = {
-  string: 'Abc',
-  list: '[ ]',
-  set: '{ }',
-  zset: '⇅',
-  hash: '#',
+  string: 'Str',
+  list: 'List',
+  set: 'Set',
+  zset: 'ZSet',
+  hash: 'Hash',
 };
+
+// 彩色类型徽标
+function TypeBadge({ type }: { type: string }) {
+  const color = redisTypeHex[type] || redisTypeHex.unknown;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '1px 7px',
+      borderRadius: 4,
+      fontSize: 10, fontWeight: 700,
+      fontFamily: 'var(--font-mono)',
+      background: `${color}20`,
+      border: `1px solid ${color}50`,
+      color,
+      letterSpacing: 0.3,
+      flexShrink: 0,
+    }}>
+      {redisTypeIcons[type] || type}
+    </span>
+  );
+}
 
 // 格式化 TTL 为人类可读
 function formatTTL(ttl: number): string {
@@ -1313,24 +1344,7 @@ function RedisBrowserTab({ instanceId }: { instanceId: number }) {
           style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
           onClick={() => handleViewKey(text)}
         >
-          {/* 类型小徽标 */}
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 28,
-            height: 22,
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 10,
-            fontWeight: 600,
-            fontFamily: 'var(--font-mono)',
-            background: `var(--ant-color-${redisTypeColors[record.type] || 'default'}, var(--bg-tertiary))`,
-            color: 'var(--bg-primary)',
-            opacity: 0.85,
-            flexShrink: 0,
-          }}>
-            {redisTypeIcons[record.type] || '?'}
-          </span>
+          <TypeBadge type={record.type} />
           <KeyName name={text} />
           {loadingKey === text && <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>...</span>}
         </div>
@@ -1510,24 +1524,39 @@ function RedisBrowserTab({ instanceId }: { instanceId: number }) {
       {/* 扫描结果统计条 */}
       {scanned && keys.length > 0 && (
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
           marginBottom: 12,
-          padding: '7px 14px',
+          padding: '10px 14px',
           background: 'var(--bg-tertiary)',
           borderRadius: 'var(--radius-md)',
-          fontSize: 12,
+          border: '1px solid var(--border-color)',
         }}>
-          <span style={{ color: 'var(--text-secondary)' }}>
-            <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{keys.length}</strong> 个 key
-          </span>
-          <div style={{ width: 1, height: 12, background: 'var(--border-color)' }} />
-          {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-            <Tag key={type} color={redisTypeColors[type] || 'default'} style={{ margin: 0, fontSize: 11 }}>
-              {type} {count}
-            </Tag>
-          ))}
+          {/* 数字行 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, fontSize: 12 }}>
+            <span>
+              <strong style={{ color: 'var(--text-primary)', fontSize: 16, fontFamily: 'var(--font-mono)' }}>{keys.length}</strong>
+              <span style={{ color: 'var(--text-tertiary)', marginLeft: 4 }}>个 key</span>
+            </span>
+            <div style={{ flex: 1 }} />
+            {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
+              const color = redisTypeHex[type] || redisTypeHex.unknown;
+              return (
+                <span key={type} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 1, background: color, display: 'inline-block' }} />
+                  {type} <strong style={{ color }}>{count}</strong>
+                </span>
+              );
+            })}
+          </div>
+          {/* 分段进度条 */}
+          <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', gap: 1 }}>
+            {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+              <div key={type} style={{
+                flex: count,
+                background: redisTypeHex[type] || redisTypeHex.unknown,
+                transition: 'flex 0.3s',
+              }} title={`${type}: ${count}`} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -1615,7 +1644,7 @@ function RedisBrowserTab({ instanceId }: { instanceId: number }) {
                 border: '1px solid var(--border-color)',
               }}>
                 <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>类型</div>
-                <Tag color={redisTypeColors[selectedKey.type] || 'default'} style={{ fontSize: 13, margin: 0 }}>{selectedKey.type}</Tag>
+                <TypeBadge type={selectedKey.type} />
               </div>
               <div style={{
                 padding: '10px 14px',
@@ -1668,6 +1697,24 @@ function RedisBrowserTab({ instanceId }: { instanceId: number }) {
 
             {/* 值内容 */}
             {renderValue(selectedKey)}
+
+            {/* 快捷操作区 */}
+            <div style={{
+              marginTop: 24,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+            }}>
+              <Popconfirm
+                title={`删除 "${selectedKey.key}"？此操作不可撤销。`}
+                onConfirm={() => { handleDeleteKey(selectedKey.key); setKeyDrawerVisible(false); }}
+                okText="删除" cancelText="取消" okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />} size="small">删除此 Key</Button>
+              </Popconfirm>
+            </div>
           </div>
         )}
       </Drawer>

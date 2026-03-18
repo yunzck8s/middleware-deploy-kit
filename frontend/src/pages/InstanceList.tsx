@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Row, Col, Input, Select, Button, Modal, Form, message, Steps,
@@ -7,7 +7,13 @@ import {
 import {
   PlusOutlined, ReloadOutlined, RocketOutlined,
   CloudServerOutlined, InfoCircleOutlined,
+  CheckCircleOutlined, LoadingOutlined, ExclamationCircleOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
+import PageHeader from '../components/common/PageHeader';
+import SectionCard from '../components/common/SectionCard';
+import ActionGroup from '../components/common/ActionGroup';
+import FilterToolbar from '../components/common/FilterToolbar';
 import { instanceAPI } from '../api/instance';
 import { getServerList } from '../api/server';
 import { getPackageList, getPackageMetadata } from '../api/package';
@@ -17,6 +23,35 @@ import InstanceCard from '../components/middleware/InstanceCard';
 import PackageSelector from '../components/middleware/PackageSelector';
 import { ParameterForm } from '../components/deployment/ParameterForm';
 import DeployLogDrawer from '../components/deployment/DeployLogDrawer';
+
+// 统计卡片
+function StatCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
+  return (
+    <div style={{
+      background: 'var(--bg-elevated)',
+      border: '1px solid var(--border-color)',
+      borderRadius: 12,
+      padding: '16px 20px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      borderTop: `3px solid ${color}`,
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: `${color}18`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, color,
+      }}>
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, color: 'var(--text-primary)' }}>{value}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function InstanceList() {
   const { type } = useParams<{ type: string }>();
@@ -297,72 +332,93 @@ export default function InstanceList() {
   });
 
   const typeLabel = type === 'nginx' ? 'Nginx' : type === 'redis' ? 'Redis' : 'OpenSSH';
+  const typeSubtitle = type === 'nginx'
+    ? '管理 Nginx 单机实例，支持离线包部署、版本升级与配置管理。'
+    : type === 'redis'
+    ? '管理 Redis 单机实例，支持离线包部署与数据浏览器。'
+    : '管理 OpenSSH 单机实例，支持离线包部署与服务管理。';
+
+  // 统计数据
+  const stats = {
+    total: instances.length,
+    running: instances.filter(i => i.status === 'running').length,
+    deploying: instances.filter(i => i.status === 'deploying').length + deployingIds.size,
+    failed: instances.filter(i => i.status === 'failed').length,
+  };
 
   // 当前选择的服务器名（用于确认摘要）
   const selectedServer = servers.find(s => s.id === instanceFormValues?.server_id);
 
   return (
-    <div>
-      {/* 页面头部 */}
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>{typeLabel} 实例列表</h2>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={loadInstances} loading={loading}>
-            刷新
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-            新建实例
-          </Button>
-        </Space>
-      </div>
+    <div className="page-stack">
+      <PageHeader
+        eyebrow={`${typeLabel} 实例`}
+        title={`${typeLabel} 实例管理`}
+        subtitle={typeSubtitle}
+        actions={
+          <ActionGroup>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={loadInstances}>刷新</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>新建实例</Button>
+          </ActionGroup>
+        }
+      />
 
-      {/* 搜索和筛选 */}
-      <div style={{ marginBottom: 24, display: 'flex', gap: 12 }}>
-        <Input.Search
-          placeholder="搜索实例名称..."
-          value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          style={{ width: 300 }}
-          allowClear
+      {/* 统计条 */}
+      <Row gutter={[12, 12]}>
+        <Col xs={12} sm={6}><StatCard label="总实例" value={stats.total} icon={<DatabaseOutlined />} color="#6366f1" /></Col>
+        <Col xs={12} sm={6}><StatCard label="运行中" value={stats.running} icon={<CheckCircleOutlined />} color="#22c55e" /></Col>
+        <Col xs={12} sm={6}><StatCard label="部署中" value={stats.deploying} icon={<LoadingOutlined />} color="#3b82f6" /></Col>
+        <Col xs={12} sm={6}><StatCard label="失败" value={stats.failed} icon={<ExclamationCircleOutlined />} color="#ef4444" /></Col>
+      </Row>
+
+      <SectionCard title="实例列表" subtitle={`所有 ${typeLabel} 实例及其当前状态`}>
+        <FilterToolbar
+          left={
+            <Space>
+              <Input
+                placeholder="搜索实例名称..."
+                value={searchText}
+                onChange={e => setSearchText(e.target.value)}
+                style={{ width: 240 }}
+                allowClear
+              />
+              <Select
+                placeholder="筛选状态"
+                value={statusFilter || undefined}
+                onChange={v => setStatusFilter(v || '')}
+                style={{ width: 140 }}
+                allowClear
+              >
+                <Select.Option value="running">运行中</Select.Option>
+                <Select.Option value="stopped">已停止</Select.Option>
+                <Select.Option value="deploying">部署中</Select.Option>
+                <Select.Option value="failed">部署失败</Select.Option>
+                <Select.Option value="unknown">待部署</Select.Option>
+              </Select>
+            </Space>
+          }
         />
-        <Select
-          placeholder="筛选状态"
-          value={statusFilter || undefined}
-          onChange={v => setStatusFilter(v || '')}
-          style={{ width: 150 }}
-          allowClear
-        >
-          <Select.Option value="running">运行中</Select.Option>
-          <Select.Option value="stopped">已停止</Select.Option>
-          <Select.Option value="deploying">部署中</Select.Option>
-          <Select.Option value="failed">部署失败</Select.Option>
-          <Select.Option value="unknown">待部署</Select.Option>
-        </Select>
-      </div>
 
-      {/* 实例卡片列表 */}
-      <Spin spinning={loading}>
-        {filteredInstances.length > 0 ? (
-          <Row gutter={[16, 16]}>
-            {filteredInstances.map(instance => (
-              <Col key={instance.id} xs={24} sm={12} lg={8} xl={6}>
-                <InstanceCard
-                  instance={instance}
-                  deploying={deployingIds.has(instance.id)}
-                  onManage={id => navigate(`/middleware/${type}/instances/${id}`)}
-                  onDeploy={handleDeploy}
-                  onViewLogs={(inst) => openLatestDeploymentLog(inst.id)}
-                  onDelete={handleDelete}
-                />
-              </Col>
-            ))}
-          </Row>
-        ) : !loading ? (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            padding: '80px 0',
-          }}>
+        {/* 实例卡片列表 */}
+        <Spin spinning={loading}>
+          {filteredInstances.length > 0 ? (
+            <div style={{ padding: '0 0 4px' }}>
+              <Row gutter={[16, 16]}>
+                {filteredInstances.map(instance => (
+                  <Col key={instance.id} xs={24} sm={12} lg={8} xl={6}>
+                    <InstanceCard
+                      instance={instance}
+                      deploying={deployingIds.has(instance.id)}
+                      onManage={id => navigate(`/middleware/${type}/instances/${id}`)}
+                      onDeploy={handleDeploy}
+                      onViewLogs={(inst) => openLatestDeploymentLog(inst.id)}
+                      onDelete={handleDelete}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            </div>
+          ) : !loading ? (
             <Empty
               image={<CloudServerOutlined style={{ fontSize: 64, color: 'var(--text-secondary, #999)' }} />}
               description={
@@ -375,14 +431,15 @@ export default function InstanceList() {
                   </p>
                 </div>
               }
+              style={{ padding: '40px 0' }}
             >
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
                 新建 {typeLabel} 实例
               </Button>
             </Empty>
-          </div>
-        ) : null}
-      </Spin>
+          ) : null}
+        </Spin>
+      </SectionCard>
 
       {/* 创建实例向导 */}
       <Modal
