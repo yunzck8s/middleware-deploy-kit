@@ -43,6 +43,11 @@ func Init(cfg *config.Config) error {
 		return fmt.Errorf("failed to cleanup legacy non-nginx data: %w", err)
 	}
 
+	// 迁移到实例模型
+	if err := MigrateToInstanceModel(); err != nil {
+		return fmt.Errorf("failed to migrate to instance model: %w", err)
+	}
+
 	return nil
 }
 
@@ -51,6 +56,7 @@ func AutoMigrate() error {
 	return DB.AutoMigrate(
 		&models.User{},
 		&models.MiddlewarePackage{},
+		&models.MiddlewareInstance{},
 		&models.Certificate{},
 		&models.Server{},
 		&models.ServerGroup{},

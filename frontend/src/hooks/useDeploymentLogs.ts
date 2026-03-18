@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { DeploymentLog } from '../types';
 import { message } from 'antd';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9090/api/v1';
 const STREAM_BASE_URL = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 interface UseDeploymentLogsOptions {

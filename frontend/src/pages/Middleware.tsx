@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   Select,
+  Segmented,
   Table,
   Upload,
   message,
@@ -38,6 +39,12 @@ import { formatDateTime, formatFileSize } from '../utils/formatters';
 const { Dragger } = Upload;
 const { Option } = Select;
 
+const MIDDLEWARE_TYPES = [
+  { label: 'Nginx', value: 'nginx' },
+  { label: 'Redis', value: 'redis', disabled: true },
+  { label: 'OpenSSH', value: 'openssh', disabled: true },
+];
+
 const Middleware: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [packages, setPackages] = useState<MiddlewarePackage[]>([]);
@@ -48,12 +55,13 @@ const Middleware: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [selectedType, setSelectedType] = useState('nginx');
   const [form] = Form.useForm();
 
   const loadPackages = async () => {
     try {
       setLoading(true);
-      const response = await getPackageList({ name: 'nginx', page: 1, page_size: 1000 });
+      const response = await getPackageList({ name: selectedType, page: 1, page_size: 1000 });
       setPackages(response.packages || []);
       setTotal(response.packages?.length || 0);
     } catch (error: any) {
@@ -65,7 +73,7 @@ const Middleware: React.FC = () => {
 
   useEffect(() => {
     loadPackages();
-  }, []);
+  }, [selectedType]);
 
   const activePackages = useMemo(() => packages.filter((item) => item.status === 'active'), [packages]);
   const latestPackage = useMemo(
@@ -95,7 +103,7 @@ const Middleware: React.FC = () => {
       setUploading(true);
       await uploadPackage({
         ...values,
-        name: 'nginx',
+        name: selectedType,
         file: fileList[0].originFileObj as File,
       });
       message.success('离线包已上传，可在新建部署时直接选用');
@@ -125,14 +133,17 @@ const Middleware: React.FC = () => {
       title: '版本',
       dataIndex: 'version',
       key: 'version',
-      render: (value, record) => (
-        <div>
-          <div style={{ fontWeight: 700 }}>{record.display_name || `Nginx ${value}`}</div>
-          <div style={{ marginTop: 4, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-            nginx {value}
+      render: (value, record) => {
+        const typeLabel = MIDDLEWARE_TYPES.find((t) => t.value === selectedType)?.label || selectedType;
+        return (
+          <div>
+            <div style={{ fontWeight: 700 }}>{record.display_name || `${typeLabel} ${value}`}</div>
+            <div style={{ marginTop: 4, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              {selectedType} {value}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: '操作系统',
@@ -176,9 +187,9 @@ const Middleware: React.FC = () => {
   return (
     <div className="page-stack">
       <PageHeader
-        eyebrow="Nginx 离线包管理"
+        eyebrow="离线包管理"
         title="离线包管理"
-        subtitle="统一管理 Nginx 离线包、适配系统和 metadata.json 参数，部署时可直接选用。"
+        subtitle="统一管理中间件离线包、适配系统和 metadata.json 参数，部署时可直接选用。"
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={loadPackages}>刷新</Button>
@@ -186,6 +197,14 @@ const Middleware: React.FC = () => {
           </ActionGroup>
         )}
       />
+
+      <div style={{ marginBottom: 16 }}>
+        <Segmented
+          options={MIDDLEWARE_TYPES}
+          value={selectedType}
+          onChange={(value) => { setSelectedType(value as string); setPage(1); setSearchText(''); }}
+        />
+      </div>
 
       <div className="metric-grid">
         <MetricTile label="当前资源数" value={total} hint="当前可直接用于部署的离线包数" icon={<InboxOutlined />} tone="info" loading={loading} />
@@ -214,7 +233,7 @@ const Middleware: React.FC = () => {
 
         {filteredPackages.length === 0 && !loading ? (
           <EmptyState
-            title="还没有可用的 Nginx 离线包"
+            title={`还没有可用的 ${MIDDLEWARE_TYPES.find((t) => t.value === selectedType)?.label || selectedType} 离线包`}
             description="上传包含 metadata.json 的 ZIP 离线包后，创建部署时会自动显示对应参数。"
             action={<Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传第一个离线包</Button>}
           />
@@ -241,7 +260,7 @@ const Middleware: React.FC = () => {
       </SectionCard>
 
       <Drawer
-        title="上传新的 Nginx 离线包"
+        title={`上传新的 ${MIDDLEWARE_TYPES.find((t) => t.value === selectedType)?.label || selectedType} 离线包`}
         open={uploadVisible}
         onClose={() => {
           setUploadVisible(false);
@@ -304,7 +323,7 @@ const Middleware: React.FC = () => {
             >
               <p className="ant-upload-drag-icon"><UploadOutlined /></p>
               <p className="ant-upload-text">点击或拖拽 ZIP 文件到这里</p>
-              <p className="ant-upload-hint">请上传包含 metadata.json 的 Nginx ZIP 离线包，最大 500 MB</p>
+              <p className="ant-upload-hint">请上传包含 metadata.json 的 ZIP 离线包，最大 500 MB</p>
             </Dragger>
           </Form.Item>
         </Form>

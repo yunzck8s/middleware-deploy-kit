@@ -8,18 +8,20 @@ import (
 
 // Certificate SSL证书模型
 type Certificate struct {
-	ID           uint      `gorm:"primarykey" json:"id"`
-	Name         string    `gorm:"size:100;not null;uniqueIndex" json:"name"`      // 证书名称
-	Domain       string    `gorm:"size:255" json:"domain"`                         // 域名
-	CertFilePath string    `gorm:"size:500;not null" json:"cert_file_path"`        // .crt 文件路径
-	KeyFilePath  string    `gorm:"size:500;not null" json:"key_file_path"`         // .key 文件路径
-	ValidFrom    time.Time `json:"valid_from"`                                     // 有效期开始
-	ValidUntil   time.Time `json:"valid_until"`                                    // 有效期结束
-	Issuer       string    `gorm:"size:255" json:"issuer"`                         // 颁发者
-	Subject      string    `gorm:"size:255" json:"subject"`                        // 主题
-	Status       string    `gorm:"size:20;default:'active'" json:"status"`         // active, expired, deleted
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uint                 `gorm:"primarykey" json:"id"`
+	Name         string               `gorm:"size:100;not null;uniqueIndex" json:"name"`      // 证书名称
+	InstanceID   *uint                `gorm:"index" json:"instance_id"`                       // 关联的中间件实例 ID
+	Instance     *MiddlewareInstance  `gorm:"foreignKey:InstanceID" json:"instance,omitempty"`
+	Domain       string               `gorm:"size:255" json:"domain"`                         // 域名
+	CertFilePath string               `gorm:"size:500;not null" json:"cert_file_path"`        // .crt 文件路径
+	KeyFilePath  string               `gorm:"size:500;not null" json:"key_file_path"`         // .key 文件路径
+	ValidFrom    time.Time            `json:"valid_from"`                                     // 有效期开始
+	ValidUntil   time.Time            `json:"valid_until"`                                    // 有效期结束
+	Issuer       string               `gorm:"size:255" json:"issuer"`                         // 颁发者
+	Subject      string               `gorm:"size:255" json:"subject"`                        // 主题
+	Status       string               `gorm:"size:20;default:'active'" json:"status"`         // active, expired, deleted
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
 }
 
 // BeforeCreate GORM 钩子：创建前

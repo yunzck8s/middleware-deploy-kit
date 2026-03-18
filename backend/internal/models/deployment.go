@@ -32,6 +32,7 @@ type Deployment struct {
 	Name        string           `json:"name" gorm:"not null"`                          // 部署名称
 	Description string           `json:"description"`                                   // 描述
 	Type        DeploymentType   `json:"type" gorm:"not null;index"`                    // 部署类型
+	InstanceID  *uint            `json:"instance_id,omitempty" gorm:"index"`            // 关联的中间件实例 ID
 	ServerID    uint             `json:"server_id" gorm:"not null;index"`               // 目标服务器
 	Status      DeploymentStatus `json:"status" gorm:"default:pending;index"`           // 状态
 
@@ -59,12 +60,13 @@ type Deployment struct {
 	RolledBackFrom *uint  `json:"rolled_back_from,omitempty"`              // 从哪个部署回滚而来
 
 	// 关联
-	Server       *Server          `json:"server,omitempty" gorm:"foreignKey:ServerID"`
-	NginxConfig  *NginxConfig     `json:"nginx_config,omitempty" gorm:"foreignKey:NginxConfigID"`
-	Package      *MiddlewarePackage `json:"package,omitempty" gorm:"foreignKey:PackageID"`
-	Certificate  *Certificate     `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
-	Logs         []DeploymentLog  `json:"logs,omitempty" gorm:"foreignKey:DeploymentID"`
-	Hooks        []DeploymentHook `json:"hooks,omitempty" gorm:"foreignKey:DeploymentID"`
+	Instance     *MiddlewareInstance `json:"instance,omitempty" gorm:"foreignKey:InstanceID"`
+	Server       *Server             `json:"server,omitempty" gorm:"foreignKey:ServerID"`
+	NginxConfig  *NginxConfig        `json:"nginx_config,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Package      *MiddlewarePackage  `json:"package,omitempty" gorm:"foreignKey:PackageID"`
+	Certificate  *Certificate        `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Logs         []DeploymentLog     `json:"logs,omitempty" gorm:"foreignKey:DeploymentID"`
+	Hooks        []DeploymentHook    `json:"hooks,omitempty" gorm:"foreignKey:DeploymentID"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

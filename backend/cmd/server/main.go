@@ -135,6 +135,23 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	v1.POST("/system-config/test-smtp", api.AuthMiddleware(cfg), configAPI.TestSMTP)
 	v1.POST("/system-config/test-webhook", api.AuthMiddleware(cfg), configAPI.TestWebhook)
 
+	// 部署管理 API（需要先初始化，因为中间件管理依赖它）
+	deploymentAPI := api.NewDeploymentAPI(cfg)
+
+	// 中间件管理 API
+	middlewareInstanceAPI := api.NewMiddlewareInstanceAPI(cfg, deploymentAPI)
+	middleware := v1.Group("/middleware")
+	middleware.Use(api.AuthMiddleware(cfg))
+	{
+		middleware.GET("/types", api.GetMiddlewareTypes)                           // 获取中间件类型统计
+		middleware.GET("/instances", middlewareInstanceAPI.GetMiddlewareInstances)              // 获取实例列表
+		middleware.GET("/instances/:id", middlewareInstanceAPI.GetMiddlewareInstance)           // 获取实例详情
+		middleware.POST("/instances", middlewareInstanceAPI.CreateMiddlewareInstance)           // 创建实例
+		middleware.PUT("/instances/:id", middlewareInstanceAPI.UpdateMiddlewareInstance)        // 更新实例
+		middleware.DELETE("/instances/:id", middlewareInstanceAPI.DeleteMiddlewareInstance)     // 删除实例
+		middleware.GET("/instances/:id/stats", middlewareInstanceAPI.GetMiddlewareInstanceStats) // 获取实例统计
+	}
+
 	// 服务器管理 API
 	serverAPI := api.NewServerAPI(cfg)
 	servers := v1.Group("/servers")
@@ -181,7 +198,6 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	}
 
 	// 部署管理 API
-	deploymentAPI := api.NewDeploymentAPI(cfg)
 	deployments := v1.Group("/deployments")
 	deployments.Use(api.AuthMiddleware(cfg))
 	{

@@ -13,10 +13,10 @@ import Dashboard from './pages/Dashboard';
 import Middleware from './pages/Middleware';
 import Certificates from './pages/Certificates';
 import Servers from './pages/Servers';
-import NginxConfig from './pages/NginxConfig';
-import Deployments from './pages/Deployments';
 import Notifications from './pages/Notifications';
 import SystemConfig from './pages/SystemConfig';
+import InstanceList from './pages/InstanceList';
+import InstanceDetail from './pages/InstanceDetail';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
@@ -156,10 +156,10 @@ function App() {
             <Route path="servers" element={<Servers />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="system-config" element={<SystemConfig />} />
+            <Route path="middleware/:type/instances" element={<InstanceList />} />
+            <Route path="middleware/:type/instances/:id" element={<InstanceDetail />} />
             <Route path="middleware/nginx/packages" element={<Middleware />} />
             <Route path="middleware/nginx/certificates" element={<Certificates />} />
-            <Route path="middleware/nginx/configs" element={<NginxConfig />} />
-            <Route path="middleware/nginx/deployments" element={<Deployments />} />
             <Route path="middleware/redis/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
             <Route path="middleware/openssh/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
           </Route>

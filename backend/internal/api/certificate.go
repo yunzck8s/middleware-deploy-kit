@@ -32,8 +32,9 @@ func NewCertificateAPI(cfg *config.Config) *CertificateAPI {
 
 // UploadCertRequest 上传证书请求
 type UploadCertRequest struct {
-	Name   string `form:"name" binding:"required"`   // 证书名称
-	Domain string `form:"domain"`                    // 域名
+	Name       string `form:"name" binding:"required"`   // 证书名称
+	Domain     string `form:"domain"`                    // 域名
+	InstanceID *uint  `form:"instance_id"`               // 关联实例ID
 }
 
 // Upload 上传证书
@@ -175,6 +176,7 @@ func (ca *CertificateAPI) Upload(c *gin.Context) {
 	certificate := &models.Certificate{
 		Name:         req.Name,
 		Domain:       domain,
+		InstanceID:   req.InstanceID,
 		CertFilePath: certPath,
 		KeyFilePath:  keyPath,
 		ValidFrom:    cert.NotBefore,
@@ -198,6 +200,7 @@ func (ca *CertificateAPI) Upload(c *gin.Context) {
 // List 获取证书列表
 func (ca *CertificateAPI) List(c *gin.Context) {
 	status := c.Query("status")   // 筛选状态：active, expired
+	instanceID := c.Query("instance_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
@@ -214,6 +217,9 @@ func (ca *CertificateAPI) List(c *gin.Context) {
 
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if instanceID != "" {
+		query = query.Where("instance_id = ?", instanceID)
 	}
 
 	// Fix 7: 批量更新已过期但状态仍为 active 的证书

@@ -12,7 +12,6 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
-  FileTextOutlined,
   HomeOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -40,10 +39,9 @@ const routes: RouteMeta[] = [
   { match: '/servers', title: '服务器', path: '/servers' },
   { match: '/notifications', title: '通知中心', path: '/notifications' },
   { match: '/system-config', title: '系统配置', path: '/system-config' },
+  { match: '/middleware/nginx/instances', title: 'Nginx 实例', path: '/middleware/nginx/instances' },
   { match: '/middleware/nginx/packages', title: '离线包', path: '/middleware/nginx/packages' },
   { match: '/middleware/nginx/certificates', title: 'SSL 证书', path: '/middleware/nginx/certificates' },
-  { match: '/middleware/nginx/configs', title: '配置管理', path: '/middleware/nginx/configs' },
-  { match: '/middleware/nginx/deployments', title: '部署管理', path: '/middleware/nginx/deployments' },
 ];
 
 const menuItems: MenuProps['items'] = [
@@ -52,8 +50,7 @@ const menuItems: MenuProps['items'] = [
   { type: 'divider' },
   { key: '/middleware/nginx/packages', icon: <InboxOutlined />, label: '离线包' },
   { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL 证书' },
-  { key: '/middleware/nginx/configs', icon: <FileTextOutlined />, label: '配置管理' },
-  { key: '/middleware/nginx/deployments', icon: <RocketOutlined />, label: '部署管理' },
+  { key: '/middleware/nginx/instances', icon: <RocketOutlined />, label: 'Nginx 实例' },
   { type: 'divider' },
   { key: '/system-config', icon: <SettingOutlined />, label: '系统配置' },
 ];

@@ -4,7 +4,7 @@ import { store } from '../store';
 import { logout } from '../store/authSlice';
 
 // API 基础配置
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:9090/api/v1';
 
 // 创建 axios 实例
 const client: AxiosInstance = axios.create({

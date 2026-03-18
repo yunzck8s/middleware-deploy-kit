@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Button, List, Skeleton } from 'antd';
+import { Button, List, Skeleton, Row, Col } from 'antd';
 import {
   CloudServerOutlined,
   InboxOutlined,
@@ -20,20 +20,39 @@ import SectionCard from '../components/common/SectionCard';
 import ActionGroup from '../components/common/ActionGroup';
 import StatusBadge, { getStatusMeta } from '../components/common/StatusBadge';
 import EmptyState from '../components/common/EmptyState';
+import MiddlewareCard from '../components/middleware/MiddlewareCard';
 import { getRecentDayLabels } from '../utils/chartUtils';
 import { formatRelativeTime } from '../utils/formatters';
+import { instanceAPI } from '../api/instance';
+import { useState, useEffect } from 'react';
+import type { MiddlewareTypeStats } from '../types';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { stats, loading, fetchData } = useDashboardData();
+  const [middlewareTypes, setMiddlewareTypes] = useState<MiddlewareTypeStats[]>([]);
 
   useAutoRefresh(fetchData, { interval: 30000, enabled: true });
+
+  useEffect(() => {
+    loadMiddlewareTypes();
+  }, []);
+
+  const loadMiddlewareTypes = async () => {
+    try {
+      const data = await instanceAPI.getTypes();
+      setMiddlewareTypes(data || []);
+    } catch (error) {
+      console.error('加载中间件类型失败:', error);
+      setMiddlewareTypes([]);
+    }
+  };
 
   const quickActions = [
     { label: '上传离线包', icon: <InboxOutlined />, path: '/middleware/nginx/packages' },
     { label: '管理证书', icon: <SafetyCertificateOutlined />, path: '/middleware/nginx/certificates' },
-    { label: '编辑配置', icon: <SettingOutlined />, path: '/middleware/nginx/configs' },
-    { label: '发起部署', icon: <RocketOutlined />, path: '/middleware/nginx/deployments' },
+    { label: '管理实例', icon: <SettingOutlined />, path: '/middleware/nginx/instances' },
+    { label: '管理服务器', icon: <CloudServerOutlined />, path: '/servers' },
   ];
 
   const chartDates = getRecentDayLabels(7);
@@ -49,12 +68,32 @@ const Dashboard = () => {
             <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
               刷新数据
             </Button>
-            <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>
-              新建部署任务
+            <Button type="primary" icon={<RocketOutlined />} onClick={() => navigate('/middleware/nginx/instances')}>
+              管理 Nginx 实例
             </Button>
           </ActionGroup>
         )}
       />
+
+      {middlewareTypes.length > 0 && (
+        <SectionCard
+          title="中间件管理"
+          subtitle="按类型查看和管理中间件实例"
+        >
+          <div style={{ padding: '16px' }}>
+            <Row gutter={[16, 16]}>
+              {middlewareTypes.map(type => (
+                <Col key={type.type} xs={24} sm={12} lg={8}>
+                  <MiddlewareCard
+                    stats={type}
+                    onClick={() => navigate(`/middleware/${type.type}/instances`)}
+                  />
+                </Col>
+              ))}
+            </Row>
+          </div>
+        </SectionCard>
+      )}
 
       <div className="metric-grid">
         <MetricTile
@@ -91,7 +130,7 @@ const Dashboard = () => {
           icon={<SettingOutlined />}
           tone="default"
           loading={loading}
-          onClick={() => navigate('/middleware/nginx/configs')}
+          onClick={() => navigate('/middleware/nginx/instances')}
         />
         <MetricTile
           label="运行中部署"
@@ -100,7 +139,7 @@ const Dashboard = () => {
           icon={<RocketOutlined />}
           tone={stats?.deploymentsRunning ? 'warning' : 'default'}
           loading={loading}
-          onClick={() => navigate('/middleware/nginx/deployments')}
+          onClick={() => navigate('/middleware/nginx/instances')}
         />
         <MetricTile
           label="近期成功率"
@@ -138,7 +177,7 @@ const Dashboard = () => {
           <SectionCard
             title="最近部署"
             subtitle="按时间倒序查看最近创建的任务，优先关注刚开始或刚结束的任务。"
-            extra={<Button type="link" icon={<ArrowRightOutlined />} onClick={() => navigate('/middleware/nginx/deployments')}>查看全部</Button>}
+            extra={<Button type="link" icon={<ArrowRightOutlined />} onClick={() => navigate('/middleware/nginx/instances')}>查看全部</Button>}
           >
             <div style={{ padding: 16 }}>
               {loading ? (
@@ -158,7 +197,7 @@ const Dashboard = () => {
                           borderBottomColor: 'var(--border-color)',
                         }}
                         actions={[
-                          <Button key="view" type="link" onClick={() => navigate('/middleware/nginx/deployments')}>
+                          <Button key="view" type="link" onClick={() => navigate('/middleware/nginx/instances')}>
                             查看任务详情
                           </Button>,
                         ]}

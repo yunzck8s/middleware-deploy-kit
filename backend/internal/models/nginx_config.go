@@ -11,7 +11,8 @@ type NginxConfig struct {
 	ID          uint           `json:"id" gorm:"primaryKey"`
 	Name        string         `json:"name" gorm:"not null;uniqueIndex"`     // 配置名称
 	Description string         `json:"description"`                          // 描述
-	ServerID    *uint          `json:"server_id" gorm:"index"`               // 关联的服务器 ID（可选）
+	InstanceID  *uint          `json:"instance_id" gorm:"index"`             // 关联的中间件实例 ID
+	ServerID    *uint          `json:"server_id" gorm:"index"`               // 关联的服务器 ID（可选，兼容旧数据）
 
 	// 基础配置
 	WorkerProcesses   string `json:"worker_processes" gorm:"default:'auto'"` // worker 进程数
@@ -87,10 +88,11 @@ type NginxConfig struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// 关联
-	Server      *Server         `json:"server,omitempty" gorm:"foreignKey:ServerID"`
-	Certificate *Certificate    `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
-	Locations   []NginxLocation `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
-	Upstreams   []NginxUpstream `json:"upstreams,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Instance    *MiddlewareInstance `json:"instance,omitempty" gorm:"foreignKey:InstanceID"`
+	Server      *Server             `json:"server,omitempty" gorm:"foreignKey:ServerID"`
+	Certificate *Certificate        `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Locations   []NginxLocation     `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Upstreams   []NginxUpstream     `json:"upstreams,omitempty" gorm:"foreignKey:NginxConfigID"`
 }
 
 // TableName 表名

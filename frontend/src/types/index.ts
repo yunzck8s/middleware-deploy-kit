@@ -94,6 +94,55 @@ export interface SSHTestResult {
   server?: Server;
 }
 
+// 中间件实例
+export interface MiddlewareInstance {
+  id: number;
+  name: string;
+  type: 'nginx' | 'redis' | 'openssh';
+  server_id: number;
+  server?: Server;
+  package_id?: number;
+  version: string;
+  install_path: string;
+  deploy_params?: string;
+  status: 'running' | 'stopped' | 'deploying' | 'failed' | 'unknown';
+  environment: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 创建实例请求
+export interface CreateInstanceDTO {
+  name: string;
+  type: string;
+  server_id: number;
+  package_id?: number;
+  version?: string;
+  install_path?: string;
+  environment?: string;
+  description?: string;
+  deploy_params?: Record<string, any>;
+  auto_deploy?: boolean;
+}
+
+// 中间件类型统计
+export interface MiddlewareTypeStats {
+  type: string;
+  count: number;
+  configs?: number;
+  certificates?: number;
+  last_deploy?: string;
+}
+
+// 实例统计
+export interface InstanceStats {
+  configs: number;
+  certificates: number;
+  deployments: number;
+  last_deploy?: string;
+}
+
 // Nginx Location 配置
 export interface NginxLocation {
   id?: number;

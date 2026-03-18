@@ -4,6 +4,7 @@ import type { ApiResponse, Deployment, DeploymentLog, DeploymentType } from '../
 export interface DeploymentListParams {
   status?: string;
   type?: string;
+  instance_id?: number;
   page?: number;
   page_size?: number;
 }
@@ -20,6 +21,7 @@ export interface CreateDeploymentData {
   description?: string;
   type: DeploymentType;
   server_id: number;
+  instance_id?: number;
   nginx_config_id?: number;
   package_id?: number;
   certificate_id?: number;
@@ -27,6 +29,7 @@ export interface CreateDeploymentData {
   backup_enabled?: boolean;
   restart_service?: boolean;
   service_name?: string;
+  deploy_params?: string;
 }
 
 // 获取部署任务列表

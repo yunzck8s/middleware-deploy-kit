@@ -3,6 +3,7 @@ import type { Certificate, ApiResponse } from '../types';
 
 export interface CertificateListParams {
   status?: 'active' | 'expired';
+  instance_id?: number;
   page?: number;
   page_size?: number;
 }
@@ -17,6 +18,7 @@ export interface CertificateListResponse {
 export interface UploadCertificateData {
   name: string;
   domain?: string;
+  instance_id?: number;
   cert_file: File;
   key_file: File;
 }
@@ -38,6 +40,7 @@ export const uploadCertificate = async (data: UploadCertificateData): Promise<Ce
   const formData = new FormData();
   formData.append('name', data.name);
   if (data.domain) formData.append('domain', data.domain);
+  if (data.instance_id) formData.append('instance_id', String(data.instance_id));
   formData.append('cert_file', data.cert_file);
   formData.append('key_file', data.key_file);
 
