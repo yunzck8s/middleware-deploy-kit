@@ -411,6 +411,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
         eyebrow="配置工作台"
         title={configId ? `编辑配置 · ${configName}` : '新建 Nginx 配置'}
         subtitle="在配置工作台里完成基础设置、Server、Location、TLS、安全和预览。"
+        showNotification={false}
         actions={(
           <ActionGroup>
             <Button icon={<ArrowLeftOutlined />} onClick={onBack}>返回列表</Button>

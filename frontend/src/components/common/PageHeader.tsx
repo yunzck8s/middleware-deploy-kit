@@ -6,9 +6,10 @@ interface PageHeaderProps {
   subtitle?: string;
   eyebrow?: string;
   actions?: ReactNode;
+  showNotification?: boolean;
 }
 
-const PageHeader = ({ title, subtitle, eyebrow, actions }: PageHeaderProps) => {
+const PageHeader = ({ title, subtitle, eyebrow, actions, showNotification = true }: PageHeaderProps) => {
   return (
     <div className="page-header shell-reveal shell-reveal--hero">
       <div className="page-header__copy">
@@ -18,7 +19,7 @@ const PageHeader = ({ title, subtitle, eyebrow, actions }: PageHeaderProps) => {
       </div>
       <div className="page-header__actions">
         {actions}
-        <NotificationBell />
+        {showNotification && <NotificationBell />}
       </div>
     </div>
   );
