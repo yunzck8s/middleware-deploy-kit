@@ -7,15 +7,20 @@ import (
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/config"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/db"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/models"
+	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/service"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/response"
 )
 
 type CertificateAlertAPI struct {
-	cfg *config.Config
+	cfg                 *config.Config
+	notificationService *service.NotificationService
 }
 
-func NewCertificateAlertAPI(cfg *config.Config) *CertificateAlertAPI {
-	return &CertificateAlertAPI{cfg: cfg}
+func NewCertificateAlertAPI(cfg *config.Config, ns *service.NotificationService) *CertificateAlertAPI {
+	return &CertificateAlertAPI{
+		cfg:                 cfg,
+		notificationService: ns,
+	}
 }
 
 type AlertConfigRequest struct {
@@ -78,4 +83,9 @@ func (api *CertificateAlertAPI) Get(c *gin.Context) {
 		return
 	}
 	response.Success(c, config)
+}
+
+func (api *CertificateAlertAPI) TriggerCheck(c *gin.Context) {
+	go api.notificationService.CheckCertificateExpiryForce()
+	response.Success(c, gin.H{"message": "告警检查已触发"})
 }

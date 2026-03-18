@@ -178,6 +178,9 @@ func (m *MiddlewareInstanceAPI) DeleteMiddlewareInstance(c *gin.Context) {
 		return
 	}
 
+	// 同步软删除该实例关联的部署记录，避免在统计中误计
+	db.DB.Where("instance_id = ?", id).Delete(&models.Deployment{})
+
 	response.Success(c, nil)
 }
 

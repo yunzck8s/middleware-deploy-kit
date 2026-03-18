@@ -47,7 +47,7 @@ func main() {
 	r.Use(api.CORS())
 
 	// 注册路由
-	setupRoutes(r, cfg)
+	setupRoutes(r, cfg, notificationService)
 
 	// 启动服务器
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -71,7 +71,7 @@ func main() {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(r *gin.Engine, cfg *config.Config) {
+func setupRoutes(r *gin.Engine, cfg *config.Config, notificationService *service.NotificationService) {
 	// API版本分组
 	v1 := r.Group("/api/v1")
 
@@ -124,9 +124,10 @@ func setupRoutes(r *gin.Engine, cfg *config.Config) {
 	v1.DELETE("/notifications/:id", api.AuthMiddleware(cfg), notificationAPI.Delete)
 
 	// 证书告警配置 API
-	alertAPI := api.NewCertificateAlertAPI(cfg)
+	alertAPI := api.NewCertificateAlertAPI(cfg, notificationService)
 	v1.POST("/certificate-alerts", api.AuthMiddleware(cfg), alertAPI.CreateOrUpdate)
 	v1.GET("/certificate-alerts/:certificate_id", api.AuthMiddleware(cfg), alertAPI.Get)
+	v1.POST("/certificate-alerts/trigger", api.AuthMiddleware(cfg), alertAPI.TriggerCheck)
 
 	// 系统配置 API
 	configAPI := api.NewSystemConfigAPI(cfg)

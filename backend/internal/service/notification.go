@@ -24,6 +24,15 @@ func NewNotificationService() *NotificationService {
 
 // CheckCertificateExpiry 检查证书过期并发送通知
 func (s *NotificationService) CheckCertificateExpiry() error {
+	return s.checkCertificateExpiryInternal(false)
+}
+
+// CheckCertificateExpiryForce 手动触发，跳过去重检查
+func (s *NotificationService) CheckCertificateExpiryForce() error {
+	return s.checkCertificateExpiryInternal(true)
+}
+
+func (s *NotificationService) checkCertificateExpiryInternal(force bool) error {
 	logger.Info("开始检查证书过期状态")
 
 	var certs []models.Certificate
@@ -32,18 +41,23 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 	}
 
 	today := time.Now().Format("2006-01-02")
+	sent := 0
 
 	for _, cert := range certs {
 		var config models.CertificateAlertConfig
 		if err := db.DB.Where("certificate_id = ?", cert.ID).First(&config).Error; err != nil {
-			continue // 未配置告警，跳过
+			logger.Infof("证书 %s (ID=%d) 未配置告警，跳过", cert.Name, cert.ID)
+			continue
 		}
 
 		if !config.Enabled {
+			logger.Infof("证书 %s 告警已禁用，跳过", cert.Name)
 			continue
 		}
 
 		daysLeft := cert.DaysUntilExpiry()
+		logger.Infof("证书 %s 剩余 %d 天", cert.Name, daysLeft)
+
 		if daysLeft < 0 {
 			continue // 已过期，跳过
 		}
@@ -55,22 +69,27 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 		}
 
 		for _, threshold := range thresholds {
-			// 只在接近阈值时触发（阈值当天或前一天）
-			if daysLeft >= threshold-1 && daysLeft <= threshold {
-				// 检查是否已为此阈值发送过通知
-				var logCount int64
-				db.DB.Model(&models.CertificateAlertLog{}).Where(
-					"certificate_id = ? AND threshold_days = ?",
-					cert.ID, threshold,
-				).Count(&logCount)
+			// 剩余天数小于等于阈值时触发
+			if daysLeft <= threshold {
+				// 手动触发时跳过去重检查
+				if !force {
+					var logCount int64
+					db.DB.Model(&models.CertificateAlertLog{}).Where(
+						"certificate_id = ? AND threshold_days = ? AND alert_date = ?",
+						cert.ID, threshold, today,
+					).Count(&logCount)
 
-				if logCount > 0 {
-					continue // 已发送过此阈值通知，跳过
+					if logCount > 0 {
+						logger.Infof("证书 %s 阈值 %d 天今日已通知，跳过", cert.Name, threshold)
+						continue
+					}
 				}
 
 				// 发送通知
 				if config.NotifyInternal {
 					s.sendInternalNotification(&cert, daysLeft)
+					sent++
+					logger.Infof("已为证书 %s 发送站内通知（剩余 %d 天）", cert.Name, daysLeft)
 				}
 
 				if config.NotifyEmail {
@@ -87,8 +106,9 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 					payload := map[string]interface{}{
 						"type":       "cert_expiry",
 						"cert_name":  cert.Name,
+						"domain":     cert.Domain,
 						"days_left":  daysLeft,
-						"expires_at": cert.ValidUntil,
+						"expires_at": cert.ValidUntil.Format("2006-01-02"),
 					}
 					if err := s.webhookService.Send(payload); err != nil {
 						logger.Errorf("Webhook发送失败: %v", err)
@@ -107,7 +127,7 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 		}
 	}
 
-	logger.Info("证书过期检查完成")
+	logger.Infof("证书过期检查完成，共发送 %d 条通知", sent)
 	return nil
 }
 

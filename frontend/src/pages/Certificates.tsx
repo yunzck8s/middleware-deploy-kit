@@ -10,19 +10,14 @@ import {
   Popconfirm,
   Space,
   Progress,
-  Tooltip,
   Switch,
 } from 'antd';
 import {
   UploadOutlined,
-  DeleteOutlined,
   ReloadOutlined,
-  DownloadOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   WarningOutlined,
-  ClockCircleOutlined,
-  BellOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -32,6 +27,7 @@ import {
   deleteCertificate,
   downloadCertificateFile,
   updateCertificate,
+  triggerCertificateAlertCheck,
 } from '../api/certificate';
 import type { Certificate } from '../types';
 import PageHeader from '../components/common/PageHeader';
@@ -166,6 +162,15 @@ const Certificates: React.FC = () => {
     }
   };
 
+  const handleTriggerAlert = async () => {
+    try {
+      await triggerCertificateAlertCheck();
+      message.success('告警检查已触发，请稍后查看通知');
+    } catch (error: any) {
+      message.error(error.message || '触发告警检查失败');
+    }
+  };
+
   const handleUpdate = async () => {
     if (!updateCertId || !updateCertFile || !updateKeyFile) {
       message.error('请选择新的证书文件和私钥文件');
@@ -261,31 +266,24 @@ const Certificates: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 320,
       render: (_, record) => (
-        <Space>
-          <Tooltip title="更新证书">
-            <Button
-              type="text"
-              icon={<ReloadOutlined />}
-              size="small"
-              onClick={() => {
-                setUpdateCertId(record.id);
-                setUpdateVisible(true);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="告警配置">
-            <Button type="text" icon={<BellOutlined />} size="small" onClick={() => { setAlertCertId(record.id); setAlertVisible(true); }} />
-          </Tooltip>
-          <Tooltip title="下载证书文件">
-            <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'cert', record.name)} aria-label="下载证书文件" />
-          </Tooltip>
-          <Tooltip title="下载私钥文件">
-            <Button type="text" icon={<DownloadOutlined />} size="small" onClick={() => handleDownload(record.id, 'key', record.name)} aria-label="下载私钥文件" />
-          </Tooltip>
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setUpdateCertId(record.id);
+              setUpdateVisible(true);
+            }}
+          >
+            更新
+          </Button>
+          <Button type="link" size="small" onClick={() => { setAlertCertId(record.id); setAlertVisible(true); }}>告警</Button>
+          <Button type="link" size="small" onClick={() => handleDownload(record.id, 'cert', record.name)}>下载证书</Button>
+          <Button type="link" size="small" onClick={() => handleDownload(record.id, 'key', record.name)}>下载私钥</Button>
           <Popconfirm title={`删除证书"${record.name}"后，已关联的配置不会自动替换。确定删除吗？`} onConfirm={() => handleDelete(record.id)} okText="删除" cancelText="取消">
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" aria-label="删除证书" />
+            <Button type="link" danger size="small">删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -301,16 +299,17 @@ const Certificates: React.FC = () => {
         actions={(
           <ActionGroup>
             <Button icon={<ReloadOutlined />} onClick={loadCertificates}>刷新</Button>
+            <Button onClick={handleTriggerAlert}>手动检查告警</Button>
             <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadVisible(true)}>上传证书</Button>
           </ActionGroup>
         )}
       />
 
       <div className="metric-grid metric-grid--cols-4">
-        <MetricTile label="证书总量" value={total} hint="当前系统中可管理的证书资产" icon={<SafetyCertificateOutlined />} loading={loading} />
-        <MetricTile label="健康证书" value={summary.valid} hint="剩余有效期超过 30 天" icon={<SafetyCertificateOutlined />} tone="success" loading={loading} />
-        <MetricTile label="即将到期" value={summary.expiring} hint="建议优先安排续期或替换" icon={<ClockCircleOutlined />} tone="warning" loading={loading} />
-        <MetricTile label="已过期" value={summary.expired} hint="需要尽快移除或更新" icon={<WarningOutlined />} tone="danger" loading={loading} />
+        <MetricTile label="证书总量" value={total} hint="当前系统中可管理的证书资产" loading={loading} />
+        <MetricTile label="健康证书" value={summary.valid} hint="剩余有效期超过 30 天" tone="success" loading={loading} />
+        <MetricTile label="即将到期" value={summary.expiring} hint="建议优先安排续期或替换" tone="warning" loading={loading} />
+        <MetricTile label="已过期" value={summary.expired} hint="需要尽快移除或更新" tone="danger" loading={loading} />
       </div>
 
       <SectionCard title="风险提示" subtitle="优先处理即将到期和已过期证书，避免 HTTPS 服务中断。">

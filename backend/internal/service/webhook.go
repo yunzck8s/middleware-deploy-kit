@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/db"
@@ -44,7 +45,21 @@ func (s *WebhookService) Send(payload map[string]interface{}) error {
 		return err
 	}
 
-	body, _ := json.Marshal(payload)
+	// 企业微信机器人需要特定消息格式
+	var sendPayload interface{}
+	if isWeComWebhook(config.URL) {
+		content := formatAlertMarkdown(payload)
+		sendPayload = map[string]interface{}{
+			"msgtype": "markdown",
+			"markdown": map[string]string{
+				"content": content,
+			},
+		}
+	} else {
+		sendPayload = payload
+	}
+
+	body, _ := json.Marshal(sendPayload)
 	req, err := http.NewRequest(config.Method, config.URL, bytes.NewBuffer(body))
 	if err != nil {
 		return err
@@ -68,4 +83,52 @@ func (s *WebhookService) Send(payload map[string]interface{}) error {
 		return nil
 	}
 	return fmt.Errorf("webhook返回错误: %d, 响应: %s", resp.StatusCode, string(respBody))
+}
+
+// isWeComWebhook 判断是否为企业微信机器人地址
+func isWeComWebhook(url string) bool {
+	return strings.Contains(url, "qyapi.weixin.qq.com")
+}
+
+// formatAlertMarkdown 将告警 payload 格式化为企业微信 markdown
+func formatAlertMarkdown(payload map[string]interface{}) string {
+	certName, _ := payload["cert_name"].(string)
+	domain, _ := payload["domain"].(string)
+	expiresAt, _ := payload["expires_at"].(string)
+	daysLeft, _ := payload["days_left"].(int)
+	if daysLeft == 0 {
+		if v, ok := payload["days_left"].(float64); ok {
+			daysLeft = int(v)
+		}
+	}
+
+	// 根据剩余天数选择告警级别颜色
+	level := "warning"
+	levelText := "即将到期"
+	if daysLeft <= 7 {
+		level = "warning"
+		levelText = "紧急"
+	}
+	if daysLeft <= 1 {
+		level = "warning"
+		levelText = "极度紧急"
+	}
+
+	displayName := domain
+	if displayName == "" {
+		displayName = certName
+	}
+
+	// 截取日期部分
+	if len(expiresAt) > 10 {
+		expiresAt = expiresAt[:10]
+	}
+
+	return fmt.Sprintf(`🔒 **SSL 证书过期预警 — %s**
+> 域名: <font color="%s">%s</font>
+> 证书名称: %s
+> 到期时间: %s
+> 剩余天数: <font color="%s">**%d 天**</font>
+
+请及时续期或替换，避免 HTTPS 服务中断。`, levelText, level, displayName, certName, expiresAt, level, daysLeft)
 }

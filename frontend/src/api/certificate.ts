@@ -85,3 +85,8 @@ export const downloadCertificateFile = async (id: number, type: 'cert' | 'key'):
   });
   return response as unknown as Blob;
 };
+
+// 手动触发证书告警检查
+export const triggerCertificateAlertCheck = async (): Promise<void> => {
+  await client.post('/certificate-alerts/trigger');
+};

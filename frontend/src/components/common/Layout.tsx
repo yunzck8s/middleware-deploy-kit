@@ -22,7 +22,6 @@ import { useTheme } from '../../hooks/useTheme';
 import { logout as logoutAction } from '../../store/authSlice';
 import { logout as logoutAPI } from '../../api/auth';
 import ThemeToggle from './ThemeToggle';
-import NotificationBell from './NotificationBell';
 
 const { Sider, Content } = AntLayout;
 
@@ -226,9 +225,6 @@ const MainLayout = () => {
           background: 'transparent',
         }}
       >
-        <div style={{ position: 'fixed', top: 24, right: 28, zIndex: 1000 }}>
-          <NotificationBell />
-        </div>
         <Content className="shell-content" style={{ padding: isMobile ? '16px' : '24px 28px 28px', background: 'transparent' }}>
           {isMobile && (
             <div style={{ marginBottom: 16 }}>

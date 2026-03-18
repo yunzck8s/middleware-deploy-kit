@@ -83,7 +83,7 @@ const Dashboard = () => {
           <div style={{ padding: '16px' }}>
             <Row gutter={[16, 16]}>
               {middlewareTypes.map(type => (
-                <Col key={type.type} xs={24} sm={12} lg={8}>
+                <Col key={type.type} xs={24} sm={middlewareTypes.length === 1 ? 24 : 12} lg={middlewareTypes.length === 1 ? 8 : middlewareTypes.length === 2 ? 12 : 8}>
                   <MiddlewareCard
                     stats={type}
                     onClick={() => navigate(`/middleware/${type.type}/instances`)}
@@ -187,7 +187,7 @@ const Dashboard = () => {
               ) : (
                 <List
                   itemLayout="vertical"
-                  dataSource={stats.recentDeployments}
+                  dataSource={stats.recentDeployments.slice(0, 5)}
                   renderItem={(item) => {
                     const statusMeta = getStatusMeta(item.status);
                     return (
@@ -239,51 +239,49 @@ const Dashboard = () => {
               />
             </div>
           </SectionCard>
+
+          <SectionCard title="证书风险提醒" subtitle="优先关注即将到期和需要替换的 TLS 资产。">
+            <div style={{ padding: 16 }}>
+              <div className="summary-card" style={{ borderColor: 'rgba(245, 158, 11, 0.2)' }}>
+                <div className="summary-card__label">30 天内到期证书</div>
+                <div className="summary-card__value" style={{ color: 'var(--color-warning)' }}>{stats?.certificatesExpiringSoon || 0}</div>
+                <div className="summary-card__hint">
+                  {(stats?.certificatesExpiringSoon || 0) > 0
+                    ? '建议优先检查域名映射和证书替换计划。'
+                    : '当前没有需要立即处理的到期风险。'}
+                </div>
+              </div>
+              <div className="summary-card" style={{ borderColor: 'rgba(239, 68, 68, 0.2)', marginTop: 12 }}>
+                <div className="summary-card__label">已过期证书</div>
+                <div className="summary-card__value" style={{ color: 'var(--color-danger)' }}>{stats?.certificatesExpired || 0}</div>
+                <div className="summary-card__hint">
+                  {(stats?.certificatesExpired || 0) > 0
+                    ? '需要尽快移除或更新，避免服务中断。'
+                    : '当前没有已过期的证书。'}
+                </div>
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-secondary)' }}>
+                <WarningOutlined style={{ color: 'var(--color-warning)' }} />
+                到期风险根据当前证书有效期自动计算。
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="快捷操作" subtitle="快速进入 Nginx 最常用的工作流。">
+            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {quickActions.map((action) => (
+                <Button
+                  key={action.path}
+                  icon={action.icon}
+                  block
+                  onClick={() => navigate(action.path)}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          </SectionCard>
         </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-xl)' }}>
-        <SectionCard title="证书风险提醒" subtitle="优先关注即将到期和需要替换的 TLS 资产。">
-          <div style={{ padding: 16 }}>
-            <div className="summary-card" style={{ borderColor: 'rgba(245, 158, 11, 0.2)' }}>
-              <div className="summary-card__label">30 天内到期证书</div>
-              <div className="summary-card__value" style={{ color: 'var(--color-warning)' }}>{stats?.certificatesExpiringSoon || 0}</div>
-              <div className="summary-card__hint">
-                {(stats?.certificatesExpiringSoon || 0) > 0
-                  ? '建议优先检查域名映射和证书替换计划。'
-                  : '当前没有需要立即处理的到期风险。'}
-              </div>
-            </div>
-            <div className="summary-card" style={{ borderColor: 'rgba(239, 68, 68, 0.2)', marginTop: 12 }}>
-              <div className="summary-card__label">已过期证书</div>
-              <div className="summary-card__value" style={{ color: 'var(--color-danger)' }}>{stats?.certificatesExpired || 0}</div>
-              <div className="summary-card__hint">
-                {(stats?.certificatesExpired || 0) > 0
-                  ? '需要尽快移除或更新，避免服务中断。'
-                  : '当前没有已过期的证书。'}
-              </div>
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-secondary)' }}>
-              <WarningOutlined style={{ color: 'var(--color-warning)' }} />
-              到期风险根据当前证书有效期自动计算。
-            </div>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="快捷操作" subtitle="快速进入 Nginx 最常用的工作流。">
-          <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {quickActions.map((action) => (
-              <Button
-                key={action.path}
-                icon={action.icon}
-                block
-                onClick={() => navigate(action.path)}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
-        </SectionCard>
       </div>
     </div>
   );
