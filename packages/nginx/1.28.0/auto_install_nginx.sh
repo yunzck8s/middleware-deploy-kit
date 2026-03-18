@@ -45,6 +45,19 @@ check_root() {
     fi
 }
 
+# 检测是否为 Kubernetes 节点
+is_kubernetes_node() {
+    # 检查 kubelet 服务
+    if systemctl list-unit-files 2>/dev/null | grep -q kubelet; then
+        return 0
+    fi
+    # 检查 K8s 目录
+    if [[ -d /etc/kubernetes ]] || [[ -d /var/lib/kubelet ]]; then
+        return 0
+    fi
+    return 1
+}
+
 # 关闭防火墙
 disable_firewall() {
     print_info "检查防火墙状态..."
@@ -390,10 +403,15 @@ main() {
     print_info "========================================"
     print_info "步骤 1: 系统环境优化"
     print_info "========================================"
-    disable_firewall
-    disable_selinux
-    optimize_kernel
-    optimize_limits
+    if is_kubernetes_node; then
+        print_warning "检测到当前节点为 Kubernetes 节点，跳过系统优化配置"
+        print_info "Kubernetes 节点已由集群管理工具完成系统优化，无需重复配置"
+    else
+        disable_firewall
+        disable_selinux
+        optimize_kernel
+        optimize_limits
+    fi
 
     # 安装 Nginx
     print_info "========================================"
