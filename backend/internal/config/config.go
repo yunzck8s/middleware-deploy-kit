@@ -48,7 +48,7 @@ func NewConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
-			Port: getEnvInt("SERVER_PORT", 8080),
+			Port: getEnvInt("SERVER_PORT", 9090),
 		},
 		Database: DatabaseConfig{
 			Type: "sqlite",

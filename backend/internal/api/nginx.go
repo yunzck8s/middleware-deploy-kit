@@ -35,6 +35,7 @@ type CreateNginxConfigRequest struct {
 	Name              string `json:"name" binding:"required"`
 	Description       string `json:"description"`
 	ServerID          *uint  `json:"server_id"`
+	InstanceID        *uint  `json:"instance_id"`
 	WorkerProcesses   string `json:"worker_processes"`
 	WorkerConnections int    `json:"worker_connections"`
 	EnableHTTP        bool   `json:"enable_http"`
@@ -89,6 +90,7 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		Name:              req.Name,
 		Description:       req.Description,
 		ServerID:          req.ServerID,
+		InstanceID:        req.InstanceID,
 		WorkerProcesses:   defaultString(req.WorkerProcesses, "auto"),
 		WorkerConnections: defaultInt(req.WorkerConnections, 1024),
 		EnableHTTP:        req.EnableHTTP,
@@ -157,6 +159,7 @@ func (n *NginxAPI) Create(c *gin.Context) {
 // List 获取 Nginx 配置列表
 func (n *NginxAPI) List(c *gin.Context) {
 	status := c.Query("status")
+	instanceID := c.Query("instance_id")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
@@ -172,6 +175,9 @@ func (n *NginxAPI) List(c *gin.Context) {
 
 	if status != "" {
 		query = query.Where("status = ?", status)
+	}
+	if instanceID != "" {
+		query = query.Where("instance_id = ?", instanceID)
 	}
 
 	var total int64

@@ -53,11 +53,13 @@ const navItems: { key: NavSection; label: string; icon: React.ReactNode; descrip
 
 interface ConfigEditorProps {
   configId?: number | null;
+  instanceId?: number;
+  serverId?: number;
   onSave?: () => void;
   onBack: () => void;
 }
 
-const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack }) => {
+const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serverId, onSave, onBack }) => {
   const [activeSection, setActiveSection] = useState<NavSection>('basic');
   const [form] = Form.useForm();
   const [locations, setLocations] = useState<NginxLocation[]>([]);
@@ -164,6 +166,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, onSave, onBack })
       name: normalizedName,
       locations,
       manual_config: manualConfig || undefined,
+      instance_id: instanceId,
+      server_id: serverId,
     };
   };
 

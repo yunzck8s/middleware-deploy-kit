@@ -80,6 +80,7 @@ type CreateDeploymentRequest struct {
 	Description    string `json:"description"`
 	Type           string `json:"type" binding:"required,oneof=nginx_config package certificate"`
 	ServerID       uint   `json:"server_id" binding:"required"`
+	InstanceID     *uint  `json:"instance_id"` // 关联实例
 	NginxConfigID  *uint  `json:"nginx_config_id"`
 	PackageID      *uint  `json:"package_id"`
 	CertificateID  *uint  `json:"certificate_id"`
@@ -111,6 +112,7 @@ func (a *DeploymentAPI) Create(c *gin.Context) {
 		Description:    req.Description,
 		Type:           models.DeploymentType(req.Type),
 		ServerID:       req.ServerID,
+		InstanceID:     req.InstanceID,
 		Status:         models.DeployStatusPending,
 		TargetPath:     req.TargetPath,
 		BackupEnabled:  req.BackupEnabled,
@@ -187,6 +189,7 @@ func (a *DeploymentAPI) List(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 	status := c.Query("status")
 	deployType := c.Query("type")
+	instanceID := c.Query("instance_id")
 
 	var deployments []models.Deployment
 	var total int64
@@ -198,6 +201,9 @@ func (a *DeploymentAPI) List(c *gin.Context) {
 	}
 	if deployType != "" {
 		query = query.Where("type = ?", deployType)
+	}
+	if instanceID != "" {
+		query = query.Where("instance_id = ?", instanceID)
 	}
 
 	query.Count(&total)
@@ -460,6 +466,11 @@ func (a *DeploymentAPI) executeDeployment(deployment *models.Deployment) {
 		"error_msg":  "",
 	})
 
+	// 如果关联了实例，更新实例状态为 deploying
+	if deployment.InstanceID != nil {
+		UpdateInstanceStatus(*deployment.InstanceID, "deploying")
+	}
+
 	// 清除旧日志
 	db.DB.Where("deployment_id = ?", deployment.ID).Delete(&models.DeploymentLog{})
 
@@ -488,6 +499,15 @@ func (a *DeploymentAPI) executeDeployment(deployment *models.Deployment) {
 			"error_msg":    errorMsg,
 			"can_rollback": canRollback,
 		})
+
+		// 如果关联了实例，更新实例状态
+		if deployment.InstanceID != nil {
+			if finalErr != nil {
+				UpdateInstanceStatus(*deployment.InstanceID, "stopped")
+			} else {
+				UpdateInstanceStatus(*deployment.InstanceID, "running")
+			}
+		}
 	}()
 
 	// 1. 建立 SSH 连接
@@ -543,6 +563,18 @@ func (a *DeploymentAPI) executeDeployment(deployment *models.Deployment) {
 
 // deployNginxConfig 部署 Nginx 配置
 func (a *DeploymentAPI) deployNginxConfig(client *ssh.Client, sftpClient *sftp.Client, deployment *models.Deployment, step *int) error {
+	if deployment.NginxConfig == nil {
+		a.addLog(deployment.ID, *step, "加载 Nginx 配置", "")
+		a.updateLog(deployment.ID, *step, "failed", "", "Nginx 配置不存在或已被删除")
+		return fmt.Errorf("Nginx 配置未加载: nginx_config_id=%v", deployment.NginxConfigID)
+	}
+
+	// 防御：确保 TargetPath 不为空
+	if deployment.TargetPath == "" {
+		deployment.TargetPath = "/etc/nginx/nginx.conf"
+		db.DB.Model(deployment).Update("target_path", deployment.TargetPath)
+	}
+
 	// 生成配置内容
 	a.addLog(deployment.ID, *step, "生成 Nginx 配置", "")
 	content, err := generateNginxConfig(deployment.NginxConfig)
@@ -627,6 +659,17 @@ func (a *DeploymentAPI) deployNginxConfig(client *ssh.Client, sftpClient *sftp.C
 // deployPackage 部署离线包
 func (a *DeploymentAPI) deployPackage(client *ssh.Client, sftpClient *sftp.Client, deployment *models.Deployment, step *int) error {
 	pkg := deployment.Package
+	if pkg == nil {
+		a.addLog(deployment.ID, *step, "加载离线包信息", "")
+		a.updateLog(deployment.ID, *step, "failed", "", "离线包不存在或已被删除")
+		return fmt.Errorf("离线包信息未加载: package_id=%v", deployment.PackageID)
+	}
+
+	// 防御：确保 TargetPath 不为空
+	if deployment.TargetPath == "" {
+		deployment.TargetPath = "/tmp"
+		db.DB.Model(deployment).Update("target_path", "/tmp")
+	}
 
 	// 创建目标目录
 	a.addLog(deployment.ID, *step, "创建目标目录", "")
@@ -750,6 +793,17 @@ func (a *DeploymentAPI) deployPackage(client *ssh.Client, sftpClient *sftp.Clien
 // deployCertificate 部署证书
 func (a *DeploymentAPI) deployCertificate(client *ssh.Client, sftpClient *sftp.Client, deployment *models.Deployment, step *int) error {
 	cert := deployment.Certificate
+	if cert == nil {
+		a.addLog(deployment.ID, *step, "加载证书信息", "")
+		a.updateLog(deployment.ID, *step, "failed", "", "证书不存在或已被删除")
+		return fmt.Errorf("证书信息未加载: certificate_id=%v", deployment.CertificateID)
+	}
+
+	// 防御：确保 TargetPath 不为空
+	if deployment.TargetPath == "" {
+		deployment.TargetPath = "/usr/local/nginx/ssl"
+		db.DB.Model(deployment).Update("target_path", deployment.TargetPath)
+	}
 
 	// 创建目标目录
 	a.addLog(deployment.ID, *step, "创建证书目录", "")
@@ -1050,6 +1104,7 @@ func (a *DeploymentAPI) Rollback(c *gin.Context) {
 		Name:           fmt.Sprintf("回滚: %s", deployment.Name),
 		Description:    fmt.Sprintf("从部署 #%d 回滚", deployment.ID),
 		Type:           deployment.Type,
+		InstanceID:     deployment.InstanceID,
 		ServerID:       deployment.ServerID,
 		Status:         models.DeployStatusPending,
 		NginxConfigID:  deployment.NginxConfigID,
@@ -1321,6 +1376,11 @@ func (a *DeploymentAPI) executeDeploymentWithContext(
 		"error_msg":  "",
 	})
 
+	// 如果关联了实例，更新实例状态为 deploying
+	if deployment.InstanceID != nil {
+		UpdateInstanceStatus(*deployment.InstanceID, "deploying")
+	}
+
 	// 清除旧日志
 	db.DB.Where("deployment_id = ?", deployment.ID).Delete(&models.DeploymentLog{})
 
@@ -1465,4 +1525,13 @@ func (a *DeploymentAPI) finishDeployment(deployment *models.Deployment, err erro
 		"error_msg":    errorMsg,
 		"can_rollback": canRollback,
 	})
+
+	// 更新关联实例状态
+	if deployment.InstanceID != nil {
+		if err != nil {
+			UpdateInstanceStatus(*deployment.InstanceID, "failed")
+		} else {
+			UpdateInstanceStatus(*deployment.InstanceID, "running")
+		}
+	}
 }

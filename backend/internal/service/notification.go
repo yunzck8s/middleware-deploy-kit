@@ -50,7 +50,7 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 
 		var thresholds []int
 		if err := json.Unmarshal([]byte(config.ThresholdDays), &thresholds); err != nil {
-			logger.Error("解析阈值失败: %v", err)
+			logger.Errorf("解析阈值失败: %v", err)
 			continue
 		}
 
@@ -78,7 +78,7 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 					json.Unmarshal([]byte(config.EmailRecipients), &recipients)
 					if len(recipients) > 0 {
 						if err := s.emailService.SendCertExpiryAlert(recipients, cert.Name, daysLeft); err != nil {
-							logger.Error("邮件发送失败: %v", err)
+							logger.Errorf("邮件发送失败: %v", err)
 						}
 					}
 				}
@@ -91,7 +91,7 @@ func (s *NotificationService) CheckCertificateExpiry() error {
 						"expires_at": cert.ValidUntil,
 					}
 					if err := s.webhookService.Send(payload); err != nil {
-						logger.Error("Webhook发送失败: %v", err)
+						logger.Errorf("Webhook发送失败: %v", err)
 					}
 				}
 

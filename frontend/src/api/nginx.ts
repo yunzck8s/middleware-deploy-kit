@@ -3,6 +3,7 @@ import type { NginxConfig, NginxConfigApply, NginxUpstream, NginxLocation, ApiRe
 
 export interface NginxConfigListParams {
   status?: string;
+  instance_id?: number;
   page?: number;
   page_size?: number;
 }
@@ -17,6 +18,7 @@ export interface NginxConfigListResponse {
 export interface CreateNginxConfigData {
   name: string;
   description?: string;
+  instance_id?: number;
   server_id?: number;
   worker_processes?: string;
   worker_connections?: number;
