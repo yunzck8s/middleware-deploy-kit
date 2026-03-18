@@ -147,6 +147,7 @@ export interface InstanceStats {
 export interface NginxLocation {
   id?: number;
   nginx_config_id?: number;
+  server_block_id?: number;
   path: string;
   match_type?: string;             // exact, prefix, regex, regex_case_insensitive
   handler_type?: string;           // static, proxy, redirect, return
@@ -198,6 +199,32 @@ export interface UpstreamServer {
   down?: boolean;
 }
 
+// Nginx Server Block 配置
+export interface NginxServerBlock {
+  id?: number;
+  nginx_config_id?: number;
+  name?: string;
+  enable_http: boolean;
+  http_port: number;
+  enable_https: boolean;
+  https_port: number;
+  http_to_https: boolean;
+  certificate_id?: number;
+  server_name: string;
+  root_path: string;
+  index_files: string;
+  ssl_protocols?: string;
+  ssl_ciphers?: string;
+  enable_hsts?: boolean;
+  hsts_max_age?: number;
+  enable_ocsp?: boolean;
+  enable_proxy: boolean;
+  proxy_pass?: string;
+  sort_order?: number;
+  certificate?: Certificate;
+  locations?: NginxLocation[];
+}
+
 // Nginx 配置
 export interface NginxConfig {
   id: number;
@@ -229,11 +256,12 @@ export interface NginxConfig {
   proxy_pass: string;
   locations?: NginxLocation[];
   upstreams?: NginxUpstream[];
+  server_blocks?: NginxServerBlock[];
   client_max_body_size: string;
   gzip: boolean;
   custom_config: string;
   manual_config?: string;
-  status: 'draft' | 'active' | 'disabled';
+  status: 'applied' | 'idle' | 'draft' | 'active' | 'disabled';
   // SSL/TLS advanced
   ssl_protocols?: string;
   ssl_ciphers?: string;

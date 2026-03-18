@@ -103,10 +103,11 @@ VERSION=1.1.0 ./scripts/build.sh
 - **Tests**: Vitest + jsdom + React Testing Library, setup in `src/test/setup.ts` (mocks localStorage, matchMedia, IntersectionObserver)
 
 ### Nginx Visual Config Editor (`frontend/src/components/nginx/`)
-The Nginx config system is the most complex frontend feature. `NginxConfig.tsx` page toggles between a card-grid list view and `ConfigEditor.tsx` (the main editor). The editor has a left nav sidebar with 10 sections, each rendered by a dedicated component:
+The Nginx config system is the most complex frontend feature. `NginxConfig.tsx` page toggles between a card-grid list view and `ConfigEditor.tsx` (the main editor). The editor has a left nav sidebar with 8 sections, each rendered by a dedicated component:
+- `ServerBlockEditor.tsx` — multi server block management with card list + Drawer editing (each block has its own ports, domain, SSL, proxy, locations)
 - `LocationEditor.tsx` — card-based location rules with modal for add/edit (static, proxy, redirect, return handler types)
 - `UpstreamEditor.tsx` — upstream pools with inline server management and weight visualization
-- `SSLPanel.tsx` — certificate selection, protocols, HSTS, OCSP
+- `SSLPanel.tsx` — certificate selection, protocols, HSTS, OCSP (kept for reference, SSL config now embedded in ServerBlockEditor Drawer)
 - `CachePanel.tsx` — proxy cache toggle with path/size/validity
 - `SecurityPanel.tsx` — rate limiting, connection limiting, IP access control, security headers
 - `ConfigPreview.tsx` — nginx.conf preview with regex-based syntax highlighting
@@ -137,6 +138,7 @@ metadata.json → API → frontend ParameterForm → deploy_params JSON → back
 - **Certificate update & auto-deploy**: `PUT /certificates/:id` accepts new cert/key files, performs atomic replacement locally (write .tmp → rename), then auto-deploys to all servers using that certificate via SSH/SFTP (also atomic: upload .tmp → `sudo mv`). Runs `sudo nginx -t` before `sudo nginx -s reload`. Uses `which nginx` to detect install path on package-managed hosts. All remote commands use `sudo` for non-root SSH users.
 - **Certificate expiry notifications**: Multi-channel notification system (internal + email + webhook) with per-certificate alert configuration. Scheduler runs daily at 2:00 AM to check certificates against configured thresholds (e.g., 30/7/1 days). Deduplication via `CertificateAlertLog` prevents repeated alerts on same day (per date, not permanent). Manual trigger API (`POST /certificate-alerts/trigger`) skips deduplication. Webhook auto-detects enterprise WeChat URLs (`qyapi.weixin.qq.com`) and wraps payload in `msgtype: "markdown"` format. `setupRoutes()` receives `*service.NotificationService` to wire the trigger endpoint. Frontend: `NotificationBell` integrated in `PageHeader` component (not fixed-position), `Notifications` page, `AlertConfigDrawer` in certificates page, certificate risk card in dashboard.
 - **Middleware instance lifecycle**: Deleting a middleware instance soft-deletes associated deployment records to keep dashboard statistics accurate.
+- **Multi server block**: One `NginxConfig` supports multiple `NginxServerBlock` records, each with independent ports, domain, SSL, proxy, and locations. `NginxLocation` has a nullable `ServerBlockID` for backward compatibility. The Go template uses `{{range .ResolvedBlocks}}` to iterate and `{{define "locations"}}` sub-template for deduplication. API requests accept `server_blocks[]` array; if empty, legacy top-level fields are auto-wrapped into a single default block. Data migration `MigrateToServerBlocks()` converts existing configs.
 
 ## Testing
 

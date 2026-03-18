@@ -1,5 +1,5 @@
 import client from './client';
-import type { NginxConfig, NginxConfigApply, NginxUpstream, NginxLocation, ApiResponse } from '../types';
+import type { NginxConfig, NginxConfigApply, NginxUpstream, NginxLocation, NginxServerBlock, ApiResponse } from '../types';
 
 export interface NginxConfigListParams {
   status?: string;
@@ -47,6 +47,8 @@ export interface CreateNginxConfigData {
   gzip?: boolean;
   custom_config?: string;
   locations?: NginxLocation[];
+  // 多 Server Block
+  server_blocks?: Partial<NginxServerBlock>[];
   // Advanced SSL
   ssl_protocols?: string;
   ssl_ciphers?: string;

@@ -48,6 +48,11 @@ func Init(cfg *config.Config) error {
 		return fmt.Errorf("failed to migrate to instance model: %w", err)
 	}
 
+	// 迁移到 Server Block 模型
+	if err := MigrateToServerBlocks(); err != nil {
+		return fmt.Errorf("failed to migrate to server blocks: %w", err)
+	}
+
 	return nil
 }
 
@@ -62,6 +67,7 @@ func AutoMigrate() error {
 		&models.ServerGroup{},
 		&models.ServerGroupMapping{},
 		&models.NginxConfig{},
+		&models.NginxServerBlock{},
 		&models.NginxLocation{},
 		&models.NginxUpstream{},
 		&models.NginxConfigApply{},

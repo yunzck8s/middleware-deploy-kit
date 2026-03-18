@@ -22,6 +22,8 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   running: { label: '执行中', tone: 'info', icon: <LoadingOutlined /> },
   pending: { label: '待执行', tone: 'warning', icon: <ClockCircleOutlined /> },
   cancelled: { label: '已取消', tone: 'default', icon: <StopOutlined /> },
+  applied: { label: '使用中', tone: 'success', icon: <CheckCircleOutlined /> },
+  idle: { label: '未使用', tone: 'default', icon: <ClockCircleOutlined /> },
   active: { label: '已启用', tone: 'success', icon: <CheckCircleOutlined /> },
   draft: { label: '草稿', tone: 'default', icon: <ClockCircleOutlined /> },
   disabled: { label: '已停用', tone: 'danger', icon: <CloseCircleOutlined /> },

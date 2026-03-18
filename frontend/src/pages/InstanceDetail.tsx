@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   message,
+  Modal,
   Popconfirm,
   Progress,
   Skeleton,
@@ -39,6 +40,7 @@ import {
   getNginxConfigList,
   deleteNginxConfig,
   generateNginxConfig,
+  applyNginxConfig,
 } from '../api/nginx';
 import {
   getCertificateList,
@@ -57,14 +59,12 @@ import type {
   MiddlewareInstance,
   InstanceStats,
   NginxConfig,
-  NginxConfigApply,
   Certificate,
   Deployment,
 } from '../types';
 import InstanceStatusBadge from '../components/middleware/InstanceStatusBadge';
 import ConfigEditor from '../components/nginx/ConfigEditor';
 import ConfigPreview from '../components/nginx/ConfigPreview';
-import ApplyConfigModal from '../components/nginx/ApplyConfigModal';
 import ApplyHistoryDrawer from '../components/nginx/ApplyHistoryDrawer';
 import AlertConfigDrawer from '../components/certificates/AlertConfigDrawer';
 import StatusBadge from '../components/common/StatusBadge';
@@ -82,8 +82,7 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewContent, setPreviewContent] = useState('');
   const [previewingId, setPreviewingId] = useState<number | null>(null);
-  const [applyModalVisible, setApplyModalVisible] = useState(false);
-  const [selectedConfigId, setSelectedConfigId] = useState<number | null>(null);
+  const [applyingId, setApplyingId] = useState<number | null>(null);
   const [applyHistoryVisible, setApplyHistoryVisible] = useState(false);
   const [applyHistoryConfigId, setApplyHistoryConfigId] = useState<number | null>(null);
   const [selectedApplyId, setSelectedApplyId] = useState<number | null>(null);
@@ -127,20 +126,45 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
     }
   };
 
-  const handleApplyConfig = (id: number) => {
-    setSelectedConfigId(id);
-    setApplyModalVisible(true);
+  const handleApplyConfig = (config: NginxConfig) => {
+    if (!serverId) {
+      message.error('当前实例未绑定服务器，无法应用配置');
+      return;
+    }
+    Modal.confirm({
+      title: '应用配置',
+      content: (
+        <div style={{ marginTop: 12 }}>
+          <p>确认将配置 <strong>{config.name}</strong> 应用到当前实例的服务器？</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>将自动备份旧配置并重启 Nginx 服务。</p>
+        </div>
+      ),
+      okText: '确认应用',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          setApplyingId(config.id);
+          const result = await applyNginxConfig(config.id, {
+            server_id: serverId,
+            backup_enabled: true,
+            restart_service: true,
+          });
+          message.success('配置应用任务已创建');
+          void loadConfigs();
+          handleOpenApplyHistory(result.nginx_config_id, result.id);
+        } catch (error: any) {
+          message.error(error.message || '应用配置失败');
+        } finally {
+          setApplyingId(null);
+        }
+      },
+    });
   };
 
   const handleOpenApplyHistory = (configId: number, applyId?: number | null) => {
     setApplyHistoryConfigId(configId);
     setSelectedApplyId(applyId ?? null);
     setApplyHistoryVisible(true);
-  };
-
-  const handleApplySuccess = (createdApply: NginxConfigApply) => {
-    void loadConfigs();
-    handleOpenApplyHistory(createdApply.nginx_config_id, createdApply.id);
   };
 
   if (editorMode !== 'list') {
@@ -178,7 +202,12 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
       ) : (
         <div className="resource-card-grid">
           {configs.map((config) => {
-            const locationCount = config.locations?.length || 0;
+            const blocks = config.server_blocks || [];
+            const hasBlocks = blocks.length > 0;
+            const locationCount = hasBlocks
+              ? blocks.reduce((sum, b) => sum + (b.locations?.length || 0), 0)
+              : (config.locations?.length || 0);
+            const isApplied = config.status === 'applied';
             return (
               <div key={config.id} className="resource-card">
                 <div className="resource-card__header">
@@ -186,13 +215,27 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
                     <div className="resource-card__title">{config.name}</div>
                     <div className="resource-card__description">{config.description || '未填写说明'}</div>
                   </div>
-                  <StatusBadge status={config.status} compact />
+                  {isApplied && <StatusBadge status="applied" compact />}
                 </div>
 
                 <div className="resource-card__tags" style={{ marginTop: 16 }}>
-                  {config.enable_http && <StatusBadge status="valid" label={`HTTP ${config.http_port}`} compact />}
-                  {config.enable_https && <StatusBadge status="valid" label={`HTTPS ${config.https_port}`} compact />}
-                  <StatusBadge status="default" label={config.server_name || '_'} compact />
+                  {hasBlocks ? (
+                    <>
+                      {blocks.map((block, idx) => (
+                        <React.Fragment key={idx}>
+                          {block.enable_http && <StatusBadge status="valid" label={`HTTP:${block.http_port || 80}`} compact />}
+                          {block.enable_https && <StatusBadge status="valid" label={`HTTPS:${block.https_port || 443}`} compact />}
+                        </React.Fragment>
+                      ))}
+                      <StatusBadge status="info" label={`${blocks.length} 个 Server 块`} compact />
+                    </>
+                  ) : (
+                    <>
+                      {config.enable_http && <StatusBadge status="valid" label={`HTTP:${config.http_port}`} compact />}
+                      {config.enable_https && <StatusBadge status="valid" label={`HTTPS:${config.https_port}`} compact />}
+                      <StatusBadge status="default" label={config.server_name || '_'} compact />
+                    </>
+                  )}
                   {locationCount > 0 && <StatusBadge status="info" label={`${locationCount} 条路由`} compact />}
                 </div>
 
@@ -208,8 +251,8 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
                     <Button type="text" icon={<EyeOutlined />} loading={previewingId === config.id} onClick={() => handleViewGenerated(config.id)}>
                       查看预览
                     </Button>
-                    <Button type="text" icon={<SendOutlined />} onClick={() => handleApplyConfig(config.id)}>
-                      应用到服务器
+                    <Button type="text" icon={<SendOutlined />} loading={applyingId === config.id} onClick={() => handleApplyConfig(config)}>
+                      应用配置
                     </Button>
                     <Button type="text" icon={<HistoryOutlined />} onClick={() => handleOpenApplyHistory(config.id)}>
                       应用记录
@@ -231,15 +274,6 @@ function ConfigTab({ instanceId, serverId }: { instanceId: number; serverId?: nu
       <Drawer title="配置预览" open={previewVisible} onClose={() => setPreviewVisible(false)} width={860}>
         <ConfigPreview content={previewContent} />
       </Drawer>
-
-      {selectedConfigId && (
-        <ApplyConfigModal
-          configId={selectedConfigId}
-          open={applyModalVisible}
-          onClose={() => setApplyModalVisible(false)}
-          onSuccess={handleApplySuccess}
-        />
-      )}
 
       <ApplyHistoryDrawer
         configId={applyHistoryConfigId}

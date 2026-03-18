@@ -18,6 +18,7 @@ import (
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/logger"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/response"
 	"golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 )
 
 // NginxAPI Nginx 配置 API
@@ -30,6 +31,29 @@ func NewNginxAPI(cfg *config.Config) *NginxAPI {
 	return &NginxAPI{cfg: cfg}
 }
 
+// ServerBlockRequest Server Block 请求结构
+type ServerBlockRequest struct {
+	Name          string                 `json:"name"`
+	EnableHTTP    bool                   `json:"enable_http"`
+	HTTPPort      int                    `json:"http_port"`
+	EnableHTTPS   bool                   `json:"enable_https"`
+	HTTPSPort     int                    `json:"https_port"`
+	HTTPToHTTPS   bool                   `json:"http_to_https"`
+	CertificateID *uint                  `json:"certificate_id"`
+	ServerName    string                 `json:"server_name"`
+	RootPath      string                 `json:"root_path"`
+	IndexFiles    string                 `json:"index_files"`
+	SSLProtocols  string                 `json:"ssl_protocols"`
+	SSLCiphers    string                 `json:"ssl_ciphers"`
+	EnableHSTS    bool                   `json:"enable_hsts"`
+	HSTSMaxAge    int                    `json:"hsts_max_age"`
+	EnableOCSP    bool                   `json:"enable_ocsp"`
+	EnableProxy   bool                   `json:"enable_proxy"`
+	ProxyPass     string                 `json:"proxy_pass"`
+	SortOrder     int                    `json:"sort_order"`
+	Locations     []models.NginxLocation `json:"locations"`
+}
+
 // CreateNginxConfigRequest 创建 Nginx 配置请求
 type CreateNginxConfigRequest struct {
 	Name              string `json:"name" binding:"required"`
@@ -38,6 +62,7 @@ type CreateNginxConfigRequest struct {
 	InstanceID        *uint  `json:"instance_id"`
 	WorkerProcesses   string `json:"worker_processes"`
 	WorkerConnections int    `json:"worker_connections"`
+	// 旧字段保留兼容
 	EnableHTTP        bool   `json:"enable_http"`
 	HTTPPort          int    `json:"http_port"`
 	EnableHTTPS       bool   `json:"enable_https"`
@@ -63,6 +88,76 @@ type CreateNginxConfigRequest struct {
 	Gzip              bool                   `json:"gzip"`
 	CustomConfig      string                 `json:"custom_config"`
 	ManualConfig      string                 `json:"manual_config"`
+	// 新字段：多 Server Block
+	ServerBlocks      []ServerBlockRequest   `json:"server_blocks"`
+}
+
+// buildServerBlocksFromRequest 从请求中构建 ServerBlock 列表
+// 如果 ServerBlocks 为空，从旧字段自动构造一个默认 block（兼容旧客户端）
+func buildServerBlocksFromRequest(req *CreateNginxConfigRequest) []ServerBlockRequest {
+	if len(req.ServerBlocks) > 0 {
+		return req.ServerBlocks
+	}
+	// 兼容旧字段：构造一个默认 block
+	return []ServerBlockRequest{{
+		Name:          "默认",
+		EnableHTTP:    req.EnableHTTP,
+		HTTPPort:      req.HTTPPort,
+		EnableHTTPS:   req.EnableHTTPS,
+		HTTPSPort:     req.HTTPSPort,
+		HTTPToHTTPS:   req.HTTPToHTTPS,
+		CertificateID: req.CertificateID,
+		ServerName:    req.ServerName,
+		RootPath:      req.RootPath,
+		IndexFiles:    req.IndexFiles,
+		SSLProtocols:  "",
+		EnableProxy:   req.EnableProxy,
+		ProxyPass:     req.ProxyPass,
+		Locations:     req.Locations,
+	}}
+}
+
+// saveServerBlocksInTx 在 GORM 事务中保存 ServerBlocks 和 Locations
+func saveServerBlocksInTx(tx *gorm.DB, configID uint, blocks []ServerBlockRequest) error {
+	for i, br := range blocks {
+		block := models.NginxServerBlock{
+			NginxConfigID: configID,
+			Name:          defaultString(br.Name, fmt.Sprintf("Server %d", i+1)),
+			EnableHTTP:    br.EnableHTTP,
+			HTTPPort:      defaultInt(br.HTTPPort, 80),
+			EnableHTTPS:   br.EnableHTTPS,
+			HTTPSPort:     defaultInt(br.HTTPSPort, 443),
+			HTTPToHTTPS:   br.HTTPToHTTPS,
+			ServerName:    defaultString(br.ServerName, "_"),
+			RootPath:      defaultString(br.RootPath, defaultNginxRootPath()),
+			IndexFiles:    defaultString(br.IndexFiles, "index.html index.htm"),
+			CertificateID: br.CertificateID,
+			SSLProtocols:  defaultString(br.SSLProtocols, "TLSv1.2 TLSv1.3"),
+			SSLCiphers:    br.SSLCiphers,
+			EnableHSTS:    br.EnableHSTS,
+			HSTSMaxAge:    defaultInt(br.HSTSMaxAge, 31536000),
+			EnableOCSP:    br.EnableOCSP,
+			EnableProxy:   br.EnableProxy,
+			ProxyPass:     br.ProxyPass,
+			SortOrder:     i,
+		}
+
+		if err := tx.Create(&block).Error; err != nil {
+			return fmt.Errorf("创建 Server Block 失败: %w", err)
+		}
+
+		// 保存该 block 的 locations
+		for j, loc := range br.Locations {
+			loc.ID = 0
+			loc.NginxConfigID = configID
+			loc.ServerBlockID = &block.ID
+			loc.SortOrder = j
+			if err := tx.Create(&loc).Error; err != nil {
+				return fmt.Errorf("创建 Location 失败: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 // Create 创建 Nginx 配置
@@ -73,17 +168,27 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		return
 	}
 
-	// 检查名称是否已存在
+	// 检查名称是否已存在（包括软删除的记录，因为数据库唯一索引不区分软删除）
 	var existing models.NginxConfig
-	if db.DB.Where("name = ?", req.Name).First(&existing).Error == nil {
-		response.Conflict(c, "配置名称已存在")
-		return
+	if db.DB.Unscoped().Where("name = ?", req.Name).First(&existing).Error == nil {
+		if existing.DeletedAt.Valid {
+			// 软删除的同名记录：永久删除后允许重新创建
+			db.DB.Unscoped().Delete(&existing)
+		} else {
+			response.Conflict(c, "配置名称已存在")
+			return
+		}
 	}
 
-	// 如果启用 HTTPS，验证证书
-	if req.EnableHTTPS && req.CertificateID == nil {
-		response.BadRequest(c, "启用 HTTPS 需要选择证书")
-		return
+	// 构建 server blocks
+	blocks := buildServerBlocksFromRequest(&req)
+
+	// 验证 server blocks 中 HTTPS 必须有证书
+	for _, block := range blocks {
+		if block.EnableHTTPS && block.CertificateID == nil {
+			response.BadRequest(c, fmt.Sprintf("Server Block %q 启用 HTTPS 需要选择证书", block.Name))
+			return
+		}
 	}
 
 	cfg := &models.NginxConfig{
@@ -93,15 +198,16 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		InstanceID:        req.InstanceID,
 		WorkerProcesses:   defaultString(req.WorkerProcesses, "auto"),
 		WorkerConnections: defaultInt(req.WorkerConnections, 1024),
-		EnableHTTP:        req.EnableHTTP,
-		HTTPPort:          defaultInt(req.HTTPPort, 80),
-		EnableHTTPS:       req.EnableHTTPS,
-		HTTPSPort:         defaultInt(req.HTTPSPort, 443),
-		CertificateID:     req.CertificateID,
-		HTTPToHTTPS:       req.HTTPToHTTPS,
-		ServerName:        defaultString(req.ServerName, "_"),
-		RootPath:          defaultString(req.RootPath, defaultNginxRootPath()),
-		IndexFiles:        defaultString(req.IndexFiles, "index.html index.htm"),
+		// 旧字段保留兼容写入（取第一个 block 的值）
+		EnableHTTP:        blocks[0].EnableHTTP,
+		HTTPPort:          defaultInt(blocks[0].HTTPPort, 80),
+		EnableHTTPS:       blocks[0].EnableHTTPS,
+		HTTPSPort:         defaultInt(blocks[0].HTTPSPort, 443),
+		CertificateID:     blocks[0].CertificateID,
+		HTTPToHTTPS:       blocks[0].HTTPToHTTPS,
+		ServerName:        defaultString(blocks[0].ServerName, "_"),
+		RootPath:          defaultString(blocks[0].RootPath, defaultNginxRootPath()),
+		IndexFiles:        defaultString(blocks[0].IndexFiles, "index.html index.htm"),
 		AccessLogPath:     defaultString(req.AccessLogPath, defaultNginxAccessLogPath()),
 		ErrorLogPath:      defaultString(req.ErrorLogPath, defaultNginxErrorLogPath()),
 		LogFormat:         defaultString(req.LogFormat, "main"),
@@ -111,8 +217,8 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		RotateMaxSize:     defaultString(req.RotateMaxSize, "100M"),
 		RotateCompress:    req.RotateCompress,
 		RotateDateExt:     req.RotateDateExt,
-		EnableProxy:       req.EnableProxy,
-		ProxyPass:         req.ProxyPass,
+		EnableProxy:       blocks[0].EnableProxy,
+		ProxyPass:         blocks[0].ProxyPass,
 		ClientMaxBodySize: defaultString(req.ClientMaxBodySize, "100m"),
 		Gzip:              req.Gzip,
 		CustomConfig:      req.CustomConfig,
@@ -120,7 +226,7 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		Status:            "draft",
 	}
 
-	// 使用事务创建配置和 locations
+	// 使用事务创建配置和 server blocks
 	tx := db.DB.Begin()
 	if err := tx.Create(cfg).Error; err != nil {
 		tx.Rollback()
@@ -129,18 +235,12 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		return
 	}
 
-	// 保存 locations
-	if len(req.Locations) > 0 {
-		for i, loc := range req.Locations {
-			loc.NginxConfigID = cfg.ID
-			loc.SortOrder = i
-			if err := tx.Create(&loc).Error; err != nil {
-				tx.Rollback()
-				logger.Errorf("创建 Location 失败: %v", err)
-				response.InternalServerError(c, "创建 Location 失败")
-				return
-			}
-		}
+	// 保存 server blocks 和 locations
+	if err := saveServerBlocksInTx(tx, cfg.ID, blocks); err != nil {
+		tx.Rollback()
+		logger.Errorf("保存 Server Blocks 失败: %v", err)
+		response.InternalServerError(c, err.Error())
+		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -149,8 +249,8 @@ func (n *NginxAPI) Create(c *gin.Context) {
 		return
 	}
 
-	// 重新加载带 locations 的配置
-	db.DB.Preload("Locations").First(cfg, cfg.ID)
+	// 重新加载完整数据
+	preloadNginxConfig(db.DB, cfg)
 
 	logger.Infof("Nginx 配置创建成功: %s", cfg.Name)
 	response.SuccessWithMessage(c, "创建成功", cfg)
@@ -171,7 +271,11 @@ func (n *NginxAPI) List(c *gin.Context) {
 	}
 
 	var configs []models.NginxConfig
-	query := db.DB.Model(&models.NginxConfig{}).Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams")
+	query := db.DB.Model(&models.NginxConfig{}).
+		Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams").
+		Preload("ServerBlocks", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		Preload("ServerBlocks.Certificate").
+		Preload("ServerBlocks.Locations", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") })
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -210,7 +314,11 @@ func (n *NginxAPI) Get(c *gin.Context) {
 	}
 
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
+	q := db.DB.Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams").
+		Preload("ServerBlocks", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		Preload("ServerBlocks.Certificate").
+		Preload("ServerBlocks.Locations", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") })
+	if err := q.First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -238,21 +346,33 @@ func (n *NginxAPI) Update(c *gin.Context) {
 		return
 	}
 
-	// 更新字段
+	// 构建 server blocks
+	blocks := buildServerBlocksFromRequest(&req)
+
+	// 验证 server blocks 中 HTTPS 必须有证书
+	for _, block := range blocks {
+		if block.EnableHTTPS && block.CertificateID == nil {
+			response.BadRequest(c, fmt.Sprintf("Server Block %q 启用 HTTPS 需要选择证书", block.Name))
+			return
+		}
+	}
+
+	// 更新全局字段
 	cfg.Name = req.Name
 	cfg.Description = req.Description
 	cfg.ServerID = req.ServerID
 	cfg.WorkerProcesses = req.WorkerProcesses
 	cfg.WorkerConnections = req.WorkerConnections
-	cfg.EnableHTTP = req.EnableHTTP
-	cfg.HTTPPort = req.HTTPPort
-	cfg.EnableHTTPS = req.EnableHTTPS
-	cfg.HTTPSPort = req.HTTPSPort
-	cfg.CertificateID = req.CertificateID
-	cfg.HTTPToHTTPS = req.HTTPToHTTPS
-	cfg.ServerName = req.ServerName
-	cfg.RootPath = req.RootPath
-	cfg.IndexFiles = req.IndexFiles
+	// 旧字段保留兼容写入（取第一个 block 的值）
+	cfg.EnableHTTP = blocks[0].EnableHTTP
+	cfg.HTTPPort = blocks[0].HTTPPort
+	cfg.EnableHTTPS = blocks[0].EnableHTTPS
+	cfg.HTTPSPort = blocks[0].HTTPSPort
+	cfg.CertificateID = blocks[0].CertificateID
+	cfg.HTTPToHTTPS = blocks[0].HTTPToHTTPS
+	cfg.ServerName = blocks[0].ServerName
+	cfg.RootPath = blocks[0].RootPath
+	cfg.IndexFiles = blocks[0].IndexFiles
 	cfg.AccessLogPath = req.AccessLogPath
 	cfg.ErrorLogPath = req.ErrorLogPath
 	cfg.LogFormat = req.LogFormat
@@ -262,14 +382,14 @@ func (n *NginxAPI) Update(c *gin.Context) {
 	cfg.RotateMaxSize = req.RotateMaxSize
 	cfg.RotateCompress = req.RotateCompress
 	cfg.RotateDateExt = req.RotateDateExt
-	cfg.EnableProxy = req.EnableProxy
-	cfg.ProxyPass = req.ProxyPass
+	cfg.EnableProxy = blocks[0].EnableProxy
+	cfg.ProxyPass = blocks[0].ProxyPass
 	cfg.ClientMaxBodySize = req.ClientMaxBodySize
 	cfg.Gzip = req.Gzip
 	cfg.CustomConfig = req.CustomConfig
 	cfg.ManualConfig = req.ManualConfig
 
-	// 使用事务更新配置和 locations
+	// 使用事务更新配置、server blocks 和 locations
 	tx := db.DB.Begin()
 	if err := tx.Save(&cfg).Error; err != nil {
 		tx.Rollback()
@@ -278,27 +398,26 @@ func (n *NginxAPI) Update(c *gin.Context) {
 		return
 	}
 
-	// 删除旧的 locations
+	// 删除旧的 locations 和 server blocks
 	if err := tx.Where("nginx_config_id = ?", cfg.ID).Delete(&models.NginxLocation{}).Error; err != nil {
 		tx.Rollback()
 		logger.Errorf("删除旧 Locations 失败: %v", err)
 		response.InternalServerError(c, "更新失败")
 		return
 	}
+	if err := tx.Where("nginx_config_id = ?", cfg.ID).Delete(&models.NginxServerBlock{}).Error; err != nil {
+		tx.Rollback()
+		logger.Errorf("删除旧 Server Blocks 失败: %v", err)
+		response.InternalServerError(c, "更新失败")
+		return
+	}
 
-	// 创建新的 locations
-	if len(req.Locations) > 0 {
-		for i, loc := range req.Locations {
-			loc.ID = 0 // 清除 ID，作为新记录插入
-			loc.NginxConfigID = cfg.ID
-			loc.SortOrder = i
-			if err := tx.Create(&loc).Error; err != nil {
-				tx.Rollback()
-				logger.Errorf("创建新 Location 失败: %v", err)
-				response.InternalServerError(c, "更新 Location 失败")
-				return
-			}
-		}
+	// 创建新的 server blocks 和 locations
+	if err := saveServerBlocksInTx(tx, cfg.ID, blocks); err != nil {
+		tx.Rollback()
+		logger.Errorf("保存 Server Blocks 失败: %v", err)
+		response.InternalServerError(c, err.Error())
+		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -307,8 +426,8 @@ func (n *NginxAPI) Update(c *gin.Context) {
 		return
 	}
 
-	// 重新加载带 locations 的配置
-	db.DB.Preload("Locations").First(&cfg, cfg.ID)
+	// 重新加载完整数据
+	preloadNginxConfig(db.DB, &cfg)
 
 	logger.Infof("Nginx 配置更新成功: %s (ID: %d)", cfg.Name, cfg.ID)
 	response.SuccessWithMessage(c, "更新成功", cfg)
@@ -338,6 +457,15 @@ func (n *NginxAPI) Delete(c *gin.Context) {
 	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
+// preloadNginxConfig 预加载 NginxConfig 的所有关联数据
+func preloadNginxConfig(d *gorm.DB, cfg *models.NginxConfig) {
+	d.Preload("Server").Preload("Certificate").Preload("Locations").Preload("Upstreams").
+		Preload("ServerBlocks", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		Preload("ServerBlocks.Certificate").
+		Preload("ServerBlocks.Locations", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		First(cfg, cfg.ID)
+}
+
 // Generate 生成 Nginx 配置文件内容
 func (n *NginxAPI) Generate(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
@@ -347,7 +475,11 @@ func (n *NginxAPI) Generate(c *gin.Context) {
 	}
 
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
+	q := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").
+		Preload("ServerBlocks", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		Preload("ServerBlocks.Certificate").
+		Preload("ServerBlocks.Locations", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") })
+	if err := q.First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -373,18 +505,21 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 		return
 	}
 
+	// 构建 server blocks
+	blocks := buildServerBlocksFromRequest(&req)
+
 	cfg := &models.NginxConfig{
 		Name:              req.Name,
 		WorkerProcesses:   defaultString(req.WorkerProcesses, "auto"),
 		WorkerConnections: defaultInt(req.WorkerConnections, 1024),
-		EnableHTTP:        req.EnableHTTP,
-		HTTPPort:          defaultInt(req.HTTPPort, 80),
-		EnableHTTPS:       req.EnableHTTPS,
-		HTTPSPort:         defaultInt(req.HTTPSPort, 443),
-		HTTPToHTTPS:       req.HTTPToHTTPS,
-		ServerName:        defaultString(req.ServerName, "_"),
-		RootPath:          defaultString(req.RootPath, defaultNginxRootPath()),
-		IndexFiles:        defaultString(req.IndexFiles, "index.html index.htm"),
+		EnableHTTP:        blocks[0].EnableHTTP,
+		HTTPPort:          defaultInt(blocks[0].HTTPPort, 80),
+		EnableHTTPS:       blocks[0].EnableHTTPS,
+		HTTPSPort:         defaultInt(blocks[0].HTTPSPort, 443),
+		HTTPToHTTPS:       blocks[0].HTTPToHTTPS,
+		ServerName:        defaultString(blocks[0].ServerName, "_"),
+		RootPath:          defaultString(blocks[0].RootPath, defaultNginxRootPath()),
+		IndexFiles:        defaultString(blocks[0].IndexFiles, "index.html index.htm"),
 		AccessLogPath:     defaultString(req.AccessLogPath, defaultNginxAccessLogPath()),
 		ErrorLogPath:      defaultString(req.ErrorLogPath, defaultNginxErrorLogPath()),
 		LogFormat:         defaultString(req.LogFormat, "main"),
@@ -394,24 +529,55 @@ func (n *NginxAPI) Preview(c *gin.Context) {
 		RotateMaxSize:     defaultString(req.RotateMaxSize, "100M"),
 		RotateCompress:    req.RotateCompress,
 		RotateDateExt:     req.RotateDateExt,
-		EnableProxy:       req.EnableProxy,
-		ProxyPass:         req.ProxyPass,
+		EnableProxy:       blocks[0].EnableProxy,
+		ProxyPass:         blocks[0].ProxyPass,
 		ClientMaxBodySize: defaultString(req.ClientMaxBodySize, "100m"),
 		Gzip:              req.Gzip,
 		CustomConfig:      req.CustomConfig,
 	}
 
-	// 如果有证书 ID，加载证书信息
-	if req.CertificateID != nil {
+	// 构建临时 ServerBlocks 用于模板渲染
+	for i, br := range blocks {
+		block := models.NginxServerBlock{
+			Name:        defaultString(br.Name, fmt.Sprintf("Server %d", i+1)),
+			EnableHTTP:  br.EnableHTTP,
+			HTTPPort:    defaultInt(br.HTTPPort, 80),
+			EnableHTTPS: br.EnableHTTPS,
+			HTTPSPort:   defaultInt(br.HTTPSPort, 443),
+			HTTPToHTTPS: br.HTTPToHTTPS,
+			ServerName:  defaultString(br.ServerName, "_"),
+			RootPath:    defaultString(br.RootPath, defaultNginxRootPath()),
+			IndexFiles:  defaultString(br.IndexFiles, "index.html index.htm"),
+			SSLProtocols: defaultString(br.SSLProtocols, "TLSv1.2 TLSv1.3"),
+			SSLCiphers:  br.SSLCiphers,
+			EnableHSTS:  br.EnableHSTS,
+			HSTSMaxAge:  defaultInt(br.HSTSMaxAge, 31536000),
+			EnableOCSP:  br.EnableOCSP,
+			EnableProxy: br.EnableProxy,
+			ProxyPass:   br.ProxyPass,
+			Locations:   br.Locations,
+		}
+
+		// 加载证书
+		if br.CertificateID != nil {
+			var cert models.Certificate
+			if err := db.DB.First(&cert, *br.CertificateID).Error; err == nil {
+				block.Certificate = &cert
+				block.CertificateID = br.CertificateID
+			}
+		}
+
+		cfg.ServerBlocks = append(cfg.ServerBlocks, block)
+	}
+
+	// 兼容旧模板：设置顶层证书
+	if blocks[0].CertificateID != nil {
 		var cert models.Certificate
-		if err := db.DB.First(&cert, *req.CertificateID).Error; err == nil {
+		if err := db.DB.First(&cert, *blocks[0].CertificateID).Error; err == nil {
 			cfg.Certificate = &cert
 		}
 	}
-
-	// 处理 locations
-	cfg.Locations = req.Locations
-	logger.Infof("预览配置 - EnableProxy: %v, Locations 数量: %d, Locations: %+v", req.EnableProxy, len(req.Locations), req.Locations)
+	cfg.Locations = blocks[0].Locations
 
 	content, err := generateNginxConfig(cfg)
 	if err != nil {
@@ -600,6 +766,70 @@ func normalizeLegacyNginxPath(value, legacy, fallback string) string {
 	return value
 }
 
+// resolvedServerBlock 模板渲染用的 server block 数据
+type resolvedServerBlock struct {
+	models.NginxServerBlock
+	SSLCertPath string
+	SSLKeyPath  string
+	RootPath    string
+	IndexFiles  string
+}
+
+// buildResolvedBlocks 从 NginxConfig 构建模板渲染用的 server block 列表
+func buildResolvedBlocks(cfg *models.NginxConfig, installDir string) []resolvedServerBlock {
+	sslDir := installDir + "/ssl"
+	var blocks []resolvedServerBlock
+
+	if len(cfg.ServerBlocks) > 0 {
+		for _, sb := range cfg.ServerBlocks {
+			rb := resolvedServerBlock{
+				NginxServerBlock: sb,
+				RootPath:         normalizeLegacyNginxPath(sb.RootPath, "/usr/share/nginx/html", installDir+"/html"),
+				IndexFiles:       defaultString(sb.IndexFiles, "index.html index.htm"),
+			}
+			if sb.Certificate != nil {
+				rb.SSLCertPath = sslDir + "/" + filepath.Base(sb.Certificate.CertFilePath)
+				rb.SSLKeyPath = sslDir + "/" + filepath.Base(sb.Certificate.KeyFilePath)
+			}
+			// 如果 Locations 在 block 的 Locations 字段中
+			if len(rb.Locations) == 0 {
+				rb.Locations = sb.Locations
+			}
+			blocks = append(blocks, rb)
+		}
+	} else {
+		// 兼容旧数据：从 NginxConfig 顶层字段构造一个默认 block
+		rb := resolvedServerBlock{
+			NginxServerBlock: models.NginxServerBlock{
+				Name:        "默认",
+				EnableHTTP:  cfg.EnableHTTP,
+				HTTPPort:    cfg.HTTPPort,
+				EnableHTTPS: cfg.EnableHTTPS,
+				HTTPSPort:   cfg.HTTPSPort,
+				HTTPToHTTPS: cfg.HTTPToHTTPS,
+				ServerName:  cfg.ServerName,
+				SSLProtocols: cfg.SSLProtocols,
+				SSLCiphers:  cfg.SSLCiphers,
+				EnableHSTS:  cfg.EnableHSTS,
+				HSTSMaxAge:  cfg.HSTSMaxAge,
+				EnableOCSP:  cfg.EnableOCSP,
+				EnableProxy: cfg.EnableProxy,
+				ProxyPass:   cfg.ProxyPass,
+				Locations:   cfg.Locations,
+			},
+			RootPath:   normalizeLegacyNginxPath(cfg.RootPath, "/usr/share/nginx/html", installDir+"/html"),
+			IndexFiles: defaultString(cfg.IndexFiles, "index.html index.htm"),
+		}
+		if cfg.Certificate != nil {
+			rb.SSLCertPath = sslDir + "/" + filepath.Base(cfg.Certificate.CertFilePath)
+			rb.SSLKeyPath = sslDir + "/" + filepath.Base(cfg.Certificate.KeyFilePath)
+		}
+		blocks = append(blocks, rb)
+	}
+
+	return blocks
+}
+
 func generateNginxConfig(cfg *models.NginxConfig) (string, error) {
 	return generateNginxConfigWithRuntimeUser(cfg, fallbackNginxRuntimeUser)
 }
@@ -610,34 +840,23 @@ func generateNginxConfigWithContext(cfg *models.NginxConfig, runtimeUser, instal
 	}
 
 	resolved := *cfg
-	resolved.RootPath = normalizeLegacyNginxPath(resolved.RootPath, "/usr/share/nginx/html", installDir+"/html")
 	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", installDir+"/logs/access.log")
 	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", installDir+"/logs/error.log")
 
-	sslCertPath := ""
-	sslKeyPath := ""
-	if cfg.Certificate != nil {
-		sslDir := installDir + "/ssl"
-		sslCertPath = sslDir + "/" + filepath.Base(cfg.Certificate.CertFilePath)
-		sslKeyPath = sslDir + "/" + filepath.Base(cfg.Certificate.KeyFilePath)
-	}
-
 	data := struct {
 		*models.NginxConfig
-		RuntimeUser   string
-		PidPath       string
-		MimeTypesPath string
-		SSLCertPath   string
-		SSLKeyPath    string
-		InstallDir    string
+		RuntimeUser    string
+		PidPath        string
+		MimeTypesPath  string
+		InstallDir     string
+		ResolvedBlocks []resolvedServerBlock
 	}{
-		NginxConfig:   &resolved,
-		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
-		PidPath:       installDir + "/logs/nginx.pid",
-		MimeTypesPath: installDir + "/conf/mime.types",
-		SSLCertPath:   sslCertPath,
-		SSLKeyPath:    sslKeyPath,
-		InstallDir:    installDir,
+		NginxConfig:    &resolved,
+		RuntimeUser:    defaultString(runtimeUser, fallbackNginxRuntimeUser),
+		PidPath:        installDir + "/logs/nginx.pid",
+		MimeTypesPath:  installDir + "/conf/mime.types",
+		InstallDir:     installDir,
+		ResolvedBlocks: buildResolvedBlocks(cfg, installDir),
 	}
 
 	return executeNginxTemplate(data)
@@ -646,41 +865,121 @@ func generateNginxConfigWithContext(cfg *models.NginxConfig, runtimeUser, instal
 func generateNginxConfigWithRuntimeUser(cfg *models.NginxConfig, runtimeUser string) (string, error) {
 	resolved := *cfg
 	installDir := defaultNginxInstallDir
-	resolved.RootPath = normalizeLegacyNginxPath(resolved.RootPath, "/usr/share/nginx/html", defaultNginxRootPath())
 	resolved.AccessLogPath = normalizeLegacyNginxPath(resolved.AccessLogPath, "/var/log/nginx/access.log", defaultNginxAccessLogPath())
 	resolved.ErrorLogPath = normalizeLegacyNginxPath(resolved.ErrorLogPath, "/var/log/nginx/error.log", defaultNginxErrorLogPath())
 
-	sslCertPath := ""
-	sslKeyPath := ""
-	if cfg.Certificate != nil {
-		sslDir := installDir + "/ssl"
-		sslCertPath = sslDir + "/" + filepath.Base(cfg.Certificate.CertFilePath)
-		sslKeyPath = sslDir + "/" + filepath.Base(cfg.Certificate.KeyFilePath)
-	}
-
 	data := struct {
 		*models.NginxConfig
-		RuntimeUser   string
-		PidPath       string
-		MimeTypesPath string
-		SSLCertPath   string
-		SSLKeyPath    string
-		InstallDir    string
+		RuntimeUser    string
+		PidPath        string
+		MimeTypesPath  string
+		InstallDir     string
+		ResolvedBlocks []resolvedServerBlock
 	}{
-		NginxConfig:   &resolved,
-		RuntimeUser:   defaultString(runtimeUser, fallbackNginxRuntimeUser),
-		PidPath:       defaultNginxPidPath(),
-		MimeTypesPath: defaultNginxMimeTypesPath(),
-		SSLCertPath:   sslCertPath,
-		SSLKeyPath:    sslKeyPath,
-		InstallDir:    installDir,
+		NginxConfig:    &resolved,
+		RuntimeUser:    defaultString(runtimeUser, fallbackNginxRuntimeUser),
+		PidPath:        defaultNginxPidPath(),
+		MimeTypesPath:  defaultNginxMimeTypesPath(),
+		InstallDir:     installDir,
+		ResolvedBlocks: buildResolvedBlocks(cfg, installDir),
 	}
 
 	return executeNginxTemplate(data)
 }
 
 func executeNginxTemplate(data any) (string, error) {
-	tmpl := `# Nginx 配置文件
+	// locations 子模板：渲染 location 块列表
+	const locationsTmpl = `{{define "locations"}}{{if .EnableProxy}}
+{{if .Locations}}{{range .Locations}}
+        location {{.Path}} {
+{{if .EnableCORS}}
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
+            add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
+{{end}}
+{{if .DisableCache}}
+            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+            expires off;
+{{end}}
+{{if .ProxyPass}}
+            proxy_pass {{.ProxyPass}};
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+{{if .EnableWebsocket}}
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+{{end}}
+{{if .ProxyHTTPVersion}}
+            proxy_http_version {{.ProxyHTTPVersion}};
+{{end}}
+{{if .ProxyConnectTimeout}}
+            proxy_connect_timeout {{.ProxyConnectTimeout}};
+{{end}}
+{{if .ProxySendTimeout}}
+            proxy_send_timeout {{.ProxySendTimeout}};
+{{end}}
+{{if .ProxyReadTimeout}}
+            proxy_read_timeout {{.ProxyReadTimeout}};
+{{end}}
+{{if .ProxyMaxTempFileSize}}
+            proxy_max_temp_file_size {{.ProxyMaxTempFileSize}};
+{{end}}
+{{if .LocationMaxBodySize}}
+            client_max_body_size {{.LocationMaxBodySize}};
+{{end}}
+{{if .ProxyBuffering}}
+            proxy_buffering {{.ProxyBuffering}};
+{{end}}
+{{if .ProxyBufferSize}}
+            proxy_buffer_size {{.ProxyBufferSize}};
+{{end}}
+{{if .ProxyBuffers}}
+            proxy_buffers {{.ProxyBuffers}};
+{{end}}
+{{if .ProxyBusyBuffersSize}}
+            proxy_busy_buffers_size {{.ProxyBusyBuffersSize}};
+{{end}}
+{{if .ProxyTempFileWriteSize}}
+            proxy_temp_file_write_size {{.ProxyTempFileWriteSize}};
+{{end}}
+{{if .ProxyNextUpstream}}
+            proxy_next_upstream {{.ProxyNextUpstream}};
+{{end}}
+{{if .ProxyNextUpstreamTries}}
+            proxy_next_upstream_tries {{.ProxyNextUpstreamTries}};
+{{end}}
+{{if .ProxyNextUpstreamTimeout}}
+            proxy_next_upstream_timeout {{.ProxyNextUpstreamTimeout}};
+{{end}}
+{{end}}
+{{if .Root}}
+            root {{.Root}};
+{{end}}
+{{if .TryFiles}}
+            try_files {{.TryFiles}};
+{{else}}{{if and (not .ProxyPass) (not .Root)}}
+            try_files $uri $uri/ =404;
+{{end}}{{end}}
+        }
+{{end}}{{else}}
+        location / {
+            proxy_pass {{.ProxyPass}};
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+{{end}}
+{{else}}
+        location / {
+            try_files $uri $uri/ =404;
+        }
+{{end}}{{end}}`
+
+	tmpl := locationsTmpl + `
+# Nginx 配置文件
 # 由 Nginx 部署平台自动生成
 # 配置名称: {{.Name}}
 
@@ -769,8 +1068,9 @@ http {
 {{end}}
 {{end}}
 
+{{range .ResolvedBlocks}}
 {{if .EnableHTTP}}
-    # HTTP Server
+    # HTTP Server{{if .Name}} - {{.Name}}{{end}}
     server {
         listen {{.HTTPPort}};
         server_name {{.ServerName}};
@@ -780,113 +1080,19 @@ http {
         root {{.RootPath}};
         index {{.IndexFiles}};
 
-{{if .RateLimitEnabled}}
-        limit_req zone={{if .RateLimitZone}}{{.RateLimitZone}}{{else}}rate_limit{{end}} burst={{.RateLimitBurst}} nodelay;
-{{end}}
-{{if .ConnLimitEnabled}}
-        limit_conn {{if .ConnLimitZone}}{{.ConnLimitZone}}{{else}}conn_limit{{end}} {{.ConnLimitNum}};
-{{end}}
-
-{{if .EnableProxy}}
-{{if .Locations}}{{range .Locations}}
-        location {{.Path}} {
-{{if .EnableCORS}}
-            add_header Access-Control-Allow-Origin *;
-            add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
-            add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
-{{end}}
-{{if .DisableCache}}
-            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
-            expires off;
-{{end}}
-{{if .ProxyPass}}
-            proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-{{if .EnableWebsocket}}
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-{{end}}
-{{if .ProxyHTTPVersion}}
-            proxy_http_version {{.ProxyHTTPVersion}};
-{{end}}
-{{if .ProxyConnectTimeout}}
-            proxy_connect_timeout {{.ProxyConnectTimeout}};
-{{end}}
-{{if .ProxySendTimeout}}
-            proxy_send_timeout {{.ProxySendTimeout}};
-{{end}}
-{{if .ProxyReadTimeout}}
-            proxy_read_timeout {{.ProxyReadTimeout}};
-{{end}}
-{{if .ProxyMaxTempFileSize}}
-            proxy_max_temp_file_size {{.ProxyMaxTempFileSize}};
-{{end}}
-{{if .LocationMaxBodySize}}
-            client_max_body_size {{.LocationMaxBodySize}};
-{{end}}
-{{if .ProxyBuffering}}
-            proxy_buffering {{.ProxyBuffering}};
-{{end}}
-{{if .ProxyBufferSize}}
-            proxy_buffer_size {{.ProxyBufferSize}};
-{{end}}
-{{if .ProxyBuffers}}
-            proxy_buffers {{.ProxyBuffers}};
-{{end}}
-{{if .ProxyBusyBuffersSize}}
-            proxy_busy_buffers_size {{.ProxyBusyBuffersSize}};
-{{end}}
-{{if .ProxyTempFileWriteSize}}
-            proxy_temp_file_write_size {{.ProxyTempFileWriteSize}};
-{{end}}
-{{if .ProxyNextUpstream}}
-            proxy_next_upstream {{.ProxyNextUpstream}};
-{{end}}
-{{if .ProxyNextUpstreamTries}}
-            proxy_next_upstream_tries {{.ProxyNextUpstreamTries}};
-{{end}}
-{{if .ProxyNextUpstreamTimeout}}
-            proxy_next_upstream_timeout {{.ProxyNextUpstreamTimeout}};
-{{end}}
-{{end}}
-{{if .Root}}
-            root {{.Root}};
-{{end}}
-{{if .TryFiles}}
-            try_files {{.TryFiles}};
-{{else}}{{if and (not .ProxyPass) (not .Root)}}
-            try_files $uri $uri/ =404;
-{{end}}{{end}}
-        }
-{{end}}{{else}}
-        location / {
-            proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-{{end}}
-{{else}}
-        location / {
-            try_files $uri $uri/ =404;
-        }
-{{end}}
+{{template "locations" .}}
 {{end}}
     }
 {{end}}
 
 {{if .EnableHTTPS}}
-    # HTTPS Server
+    # HTTPS Server{{if .Name}} - {{.Name}}{{end}}
     server {
         listen {{.HTTPSPort}} ssl;
         server_name {{.ServerName}};
 
-        ssl_certificate {{if .SSLCertPath}}{{.SSLCertPath}}{{else}}{{.InstallDir}}/ssl/cert.crt{{end}};
-        ssl_certificate_key {{if .SSLKeyPath}}{{.SSLKeyPath}}{{else}}{{.InstallDir}}/ssl/cert.key{{end}};
+        ssl_certificate {{if .SSLCertPath}}{{.SSLCertPath}}{{else}}/usr/local/nginx/ssl/cert.crt{{end}};
+        ssl_certificate_key {{if .SSLKeyPath}}{{.SSLKeyPath}}{{else}}/usr/local/nginx/ssl/cert.key{{end}};
 
         ssl_session_timeout 1d;
         ssl_session_cache shared:SSL:50m;
@@ -914,102 +1120,9 @@ http {
         root {{.RootPath}};
         index {{.IndexFiles}};
 
-{{if .RateLimitEnabled}}
-        limit_req zone={{if .RateLimitZone}}{{.RateLimitZone}}{{else}}rate_limit{{end}} burst={{.RateLimitBurst}} nodelay;
-{{end}}
-{{if .ConnLimitEnabled}}
-        limit_conn {{if .ConnLimitZone}}{{.ConnLimitZone}}{{else}}conn_limit{{end}} {{.ConnLimitNum}};
-{{end}}
-
-{{if .EnableProxy}}
-{{if .Locations}}{{range .Locations}}
-        location {{.Path}} {
-{{if .EnableCORS}}
-            add_header Access-Control-Allow-Origin *;
-            add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
-            add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
-{{end}}
-{{if .DisableCache}}
-            add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
-            expires off;
-{{end}}
-{{if .ProxyPass}}
-            proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-{{if .EnableWebsocket}}
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-{{end}}
-{{if .ProxyHTTPVersion}}
-            proxy_http_version {{.ProxyHTTPVersion}};
-{{end}}
-{{if .ProxyConnectTimeout}}
-            proxy_connect_timeout {{.ProxyConnectTimeout}};
-{{end}}
-{{if .ProxySendTimeout}}
-            proxy_send_timeout {{.ProxySendTimeout}};
-{{end}}
-{{if .ProxyReadTimeout}}
-            proxy_read_timeout {{.ProxyReadTimeout}};
-{{end}}
-{{if .ProxyMaxTempFileSize}}
-            proxy_max_temp_file_size {{.ProxyMaxTempFileSize}};
-{{end}}
-{{if .LocationMaxBodySize}}
-            client_max_body_size {{.LocationMaxBodySize}};
-{{end}}
-{{if .ProxyBuffering}}
-            proxy_buffering {{.ProxyBuffering}};
-{{end}}
-{{if .ProxyBufferSize}}
-            proxy_buffer_size {{.ProxyBufferSize}};
-{{end}}
-{{if .ProxyBuffers}}
-            proxy_buffers {{.ProxyBuffers}};
-{{end}}
-{{if .ProxyBusyBuffersSize}}
-            proxy_busy_buffers_size {{.ProxyBusyBuffersSize}};
-{{end}}
-{{if .ProxyTempFileWriteSize}}
-            proxy_temp_file_write_size {{.ProxyTempFileWriteSize}};
-{{end}}
-{{if .ProxyNextUpstream}}
-            proxy_next_upstream {{.ProxyNextUpstream}};
-{{end}}
-{{if .ProxyNextUpstreamTries}}
-            proxy_next_upstream_tries {{.ProxyNextUpstreamTries}};
-{{end}}
-{{if .ProxyNextUpstreamTimeout}}
-            proxy_next_upstream_timeout {{.ProxyNextUpstreamTimeout}};
-{{end}}
-{{end}}
-{{if .Root}}
-            root {{.Root}};
-{{end}}
-{{if .TryFiles}}
-            try_files {{.TryFiles}};
-{{else}}{{if and (not .ProxyPass) (not .Root)}}
-            try_files $uri $uri/ =404;
-{{end}}{{end}}
-        }
-{{end}}{{else}}
-        location / {
-            proxy_pass {{.ProxyPass}};
-            proxy_set_header Host $http_host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-{{end}}
-{{else}}
-        location / {
-            try_files $uri $uri/ =404;
-        }
-{{end}}
+{{template "locations" .}}
     }
+{{end}}
 {{end}}
 
 {{if .CustomConfig}}
@@ -1124,7 +1237,11 @@ func (n *NginxAPI) ApplyConfig(c *gin.Context) {
 
 	// 验证配置存在
 	var cfg models.NginxConfig
-	if err := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").First(&cfg, id).Error; err != nil {
+	q := db.DB.Preload("Certificate").Preload("Locations").Preload("Upstreams").
+		Preload("ServerBlocks", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") }).
+		Preload("ServerBlocks.Certificate").
+		Preload("ServerBlocks.Locations", func(d *gorm.DB) *gorm.DB { return d.Order("sort_order") })
+	if err := q.First(&cfg, id).Error; err != nil {
 		response.NotFound(c, "配置不存在")
 		return
 	}
@@ -1592,7 +1709,16 @@ func (n *NginxAPI) executeApplyConfig(applyID uint, cfg *models.NginxConfig, ser
 		n.addApplyLog(applyID, stepNum, "重启 Nginx 服务", "success", "服务重启成功\n进程验证:\n"+verifyOutputStr, "")
 	}
 
-	logger.Infof("Nginx 配置应用成功: apply_id=%d", applyID)
+	// 应用成功后，更新配置状态
+	// 将当前配置标记为 applied，同 instance 下其他配置标记为 idle
+	db.DB.Model(&models.NginxConfig{}).Where("id = ?", cfg.ID).Update("status", "applied")
+	if cfg.InstanceID != nil && *cfg.InstanceID > 0 {
+		db.DB.Model(&models.NginxConfig{}).
+			Where("instance_id = ? AND id != ?", *cfg.InstanceID, cfg.ID).
+			Update("status", "idle")
+	}
+
+	logger.Infof("Nginx 配置应用成功: apply_id=%d, config_id=%d status=applied", applyID, cfg.ID)
 }
 
 // addApplyLog 添加应用日志

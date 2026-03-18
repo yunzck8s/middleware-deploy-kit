@@ -5,6 +5,7 @@ import (
 
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/models"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/pkg/logger"
+	"gorm.io/gorm"
 )
 
 // MigrateToInstanceModel 迁移现有数据到实例模型
@@ -104,4 +105,71 @@ func MigrateToInstanceModel() error {
 
 	logger.Info("实例数据迁移完成")
 	return nil
+}
+
+// MigrateToServerBlocks 将旧 NginxConfig 的 server 级字段迁移到 NginxServerBlock
+func MigrateToServerBlocks() error {
+	// 检查是否已有 server block 数据
+	var blockCount int64
+	if err := DB.Model(&models.NginxServerBlock{}).Count(&blockCount).Error; err != nil {
+		return fmt.Errorf("failed to count server blocks: %w", err)
+	}
+
+	if blockCount > 0 {
+		logger.Info("Server Block 数据已存在，跳过迁移")
+		return nil
+	}
+
+	// 查询所有现有 NginxConfig
+	var configs []models.NginxConfig
+	if err := DB.Find(&configs).Error; err != nil {
+		return fmt.Errorf("failed to query nginx configs: %w", err)
+	}
+
+	if len(configs) == 0 {
+		logger.Info("无 Nginx 配置需要迁移到 Server Block")
+		return nil
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		for _, cfg := range configs {
+			block := models.NginxServerBlock{
+				NginxConfigID: cfg.ID,
+				Name:          "默认",
+				EnableHTTP:    cfg.EnableHTTP,
+				HTTPPort:      cfg.HTTPPort,
+				EnableHTTPS:   cfg.EnableHTTPS,
+				HTTPSPort:     cfg.HTTPSPort,
+				HTTPToHTTPS:   cfg.HTTPToHTTPS,
+				ServerName:    cfg.ServerName,
+				RootPath:      cfg.RootPath,
+				IndexFiles:    cfg.IndexFiles,
+				CertificateID: cfg.CertificateID,
+				SSLProtocols:  cfg.SSLProtocols,
+				SSLCiphers:    cfg.SSLCiphers,
+				EnableHSTS:    cfg.EnableHSTS,
+				HSTSMaxAge:    cfg.HSTSMaxAge,
+				EnableOCSP:    cfg.EnableOCSP,
+				EnableProxy:   cfg.EnableProxy,
+				ProxyPass:     cfg.ProxyPass,
+				SortOrder:     0,
+			}
+
+			if err := tx.Create(&block).Error; err != nil {
+				return fmt.Errorf("failed to create server block for config %d: %w", cfg.ID, err)
+			}
+
+			// 更新该 config 下所有 NginxLocation 的 ServerBlockID
+			if err := tx.Model(&models.NginxLocation{}).
+				Where("nginx_config_id = ?", cfg.ID).
+				Update("server_block_id", block.ID).Error; err != nil {
+				return fmt.Errorf("failed to update locations for config %d: %w", cfg.ID, err)
+			}
+
+			logger.Infof("为配置 %s (ID: %d) 创建默认 Server Block", cfg.Name, cfg.ID)
+		}
+
+		logger.Info("Server Block 数据迁移完成")
+		return nil
+	})
 }

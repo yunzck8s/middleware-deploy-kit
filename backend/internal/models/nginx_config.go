@@ -88,11 +88,12 @@ type NginxConfig struct {
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// 关联
-	Instance    *MiddlewareInstance `json:"instance,omitempty" gorm:"foreignKey:InstanceID"`
-	Server      *Server             `json:"server,omitempty" gorm:"foreignKey:ServerID"`
-	Certificate *Certificate        `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
-	Locations   []NginxLocation     `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
-	Upstreams   []NginxUpstream     `json:"upstreams,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Instance     *MiddlewareInstance `json:"instance,omitempty" gorm:"foreignKey:InstanceID"`
+	Server       *Server             `json:"server,omitempty" gorm:"foreignKey:ServerID"`
+	Certificate  *Certificate        `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Locations    []NginxLocation     `json:"locations,omitempty" gorm:"foreignKey:NginxConfigID"`
+	Upstreams    []NginxUpstream     `json:"upstreams,omitempty" gorm:"foreignKey:NginxConfigID"`
+	ServerBlocks []NginxServerBlock  `json:"server_blocks,omitempty" gorm:"foreignKey:NginxConfigID"`
 }
 
 // TableName 表名
@@ -100,10 +101,55 @@ func (NginxConfig) TableName() string {
 	return "nginx_configs"
 }
 
+// NginxServerBlock Nginx Server 块配置
+type NginxServerBlock struct {
+	ID            uint   `json:"id" gorm:"primaryKey"`
+	NginxConfigID uint   `json:"nginx_config_id" gorm:"not null;index"`
+	Name          string `json:"name"`                                    // 标识名，如 "主站"、"API 服务"
+
+	// 监听
+	EnableHTTP  bool `json:"enable_http" gorm:"default:true"`
+	HTTPPort    int  `json:"http_port" gorm:"default:80"`
+	EnableHTTPS bool `json:"enable_https" gorm:"default:false"`
+	HTTPSPort   int  `json:"https_port" gorm:"default:443"`
+	HTTPToHTTPS bool `json:"http_to_https" gorm:"default:false"`
+
+	// Server
+	ServerName string `json:"server_name" gorm:"default:'_'"`
+	RootPath   string `json:"root_path" gorm:"default:'/usr/local/nginx/html'"`
+	IndexFiles string `json:"index_files" gorm:"default:'index.html index.htm'"`
+
+	// SSL
+	CertificateID *uint  `json:"certificate_id" gorm:"index"`
+	SSLProtocols  string `json:"ssl_protocols" gorm:"default:'TLSv1.2 TLSv1.3'"`
+	SSLCiphers    string `json:"ssl_ciphers"`
+	EnableHSTS    bool   `json:"enable_hsts" gorm:"default:false"`
+	HSTSMaxAge    int    `json:"hsts_max_age" gorm:"default:31536000"`
+	EnableOCSP    bool   `json:"enable_ocsp" gorm:"default:false"`
+
+	// 代理入口
+	EnableProxy bool   `json:"enable_proxy" gorm:"default:false"`
+	ProxyPass   string `json:"proxy_pass"`
+
+	SortOrder int       `json:"sort_order" gorm:"default:0"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// 关联
+	Certificate *Certificate    `json:"certificate,omitempty" gorm:"foreignKey:CertificateID"`
+	Locations   []NginxLocation `json:"locations,omitempty" gorm:"foreignKey:ServerBlockID"`
+}
+
+// TableName 表名
+func (NginxServerBlock) TableName() string {
+	return "nginx_server_blocks"
+}
+
 // NginxLocation Nginx Location 配置
 type NginxLocation struct {
 	ID            uint   `json:"id" gorm:"primaryKey"`
 	NginxConfigID uint   `json:"nginx_config_id" gorm:"not null;index"`
+	ServerBlockID *uint  `json:"server_block_id" gorm:"index"` // 关联 Server Block（nullable 兼容旧数据）
 	Path          string `json:"path" gorm:"not null"`                // 路径，如 /、/api、/static
 	MatchType     string `json:"match_type" gorm:"default:'prefix'"` // 匹配类型：exact(=), prefix(无), regex(~)
 

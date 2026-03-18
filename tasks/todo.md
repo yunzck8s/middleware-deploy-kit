@@ -1,5 +1,56 @@
 # 多中间件管理平台重构任务清单
 
+---
+
+## 阶段十四：配置管理优化 — 应用流程简化 + 状态管理 + 卡片展示（2026-03-18）
+
+### 已完成
+
+- [x] 14.1 后端 `executeApplyConfig` 成功后更新 config status
+  - 当前配置 → `applied`，同 instance 下其他配置 → `idle`
+- [x] 14.2 前端类型 `NginxConfig.status` 扩展为 `applied | idle | draft | active | disabled`
+- [x] 14.3 StatusBadge 新增 `applied`（使用中）和 `idle`（未使用）映射
+- [x] 14.4 InstanceDetail ConfigTab 重构
+  - 卡片展示所有 Server Block 的端口信息（兼容旧数据）
+  - 状态标签：仅 `applied` 显示「使用中」，其余不显示
+  - 应用流程简化：去掉 ApplyConfigModal，改为 Modal.confirm 确认对话框
+  - 自动使用实例绑定的 server_id，无需用户选择
+- [x] 14.5 NginxConfig 全局页面同步
+  - 卡片状态标签：仅 `applied` 显示「使用中」
+  - 统计指标：已启用/草稿 → 使用中/未使用
+- [x] 14.6 ConfigEditor 移除 status 下拉框
+- [x] 14.7 编译验证（后端 + 前端通过）
+
+---
+
+## 阶段十三：Nginx 多 Server Block 支持（2026-03-18）
+
+### 已完成
+
+- [x] 13.1 后端模型 + 数据库迁移
+  - 新增 `NginxServerBlock` 模型
+  - `NginxLocation` 增加 `ServerBlockID` 字段
+  - `NginxConfig` 增加 `ServerBlocks` 关联
+  - `MigrateToServerBlocks()` 迁移函数
+- [x] 13.2 API 层变更
+  - 新增 `ServerBlockRequest` / `buildServerBlocksFromRequest` / `saveServerBlocksInTx`
+  - Create/Update handler 支持 server_blocks
+  - List/Get/Generate/Preview/ApplyConfig 增加 ServerBlocks Preload
+- [x] 13.3 Go 模板重构
+  - `resolvedServerBlock` + `buildResolvedBlocks()` 构建模板数据
+  - `{{define "locations"}}` 子模板消除重复
+  - `{{range .ResolvedBlocks}}` 循环渲染多 server 段
+- [x] 13.4 前端类型 + API
+  - 新增 `NginxServerBlock` 接口
+  - `NginxConfig` / `NginxLocation` / `CreateNginxConfigData` 增加相关字段
+- [x] 13.5 前端 UI
+  - 新建 `ServerBlockEditor.tsx`（卡片列表 + Drawer 编辑）
+  - `ConfigEditor.tsx` 导航合并为 servers + state 重构
+  - `NginxConfig.tsx` 列表展示多 block 信息
+- [x] 13.6 编译验证（后端 + 前端 + 全部测试通过）
+
+---
+
 ## 阶段一：后端基础 (Backend Foundation)
 
 - [x] 1.1 创建 MiddlewareInstance 模型

@@ -3,9 +3,7 @@ import { Form, Input, InputNumber, Select, Switch, Row, Col, Button, message, Sp
 import {
   SettingOutlined,
   GlobalOutlined,
-  EnvironmentOutlined,
   ClusterOutlined,
-  LockOutlined,
   DatabaseOutlined,
   SafetyOutlined,
   FileTextOutlined,
@@ -14,12 +12,11 @@ import {
   EyeOutlined,
   ArrowLeftOutlined,
 } from '@ant-design/icons';
-import LocationEditor from './LocationEditor';
 import UpstreamEditor from './UpstreamEditor';
-import SSLPanel from './SSLPanel';
 import CachePanel from './CachePanel';
 import SecurityPanel from './SecurityPanel';
 import ConfigPreview from './ConfigPreview';
+import ServerBlockEditor from './ServerBlockEditor';
 import {
   getNginxConfigDetail,
   createNginxConfig,
@@ -27,7 +24,7 @@ import {
   previewNginxConfig,
 } from '../../api/nginx';
 import { getCertificateList } from '../../api/certificate';
-import type { NginxLocation, NginxUpstream, Certificate } from '../../types';
+import type { NginxUpstream, NginxServerBlock, Certificate } from '../../types';
 import PageHeader from '../common/PageHeader';
 import SectionCard from '../common/SectionCard';
 import ActionGroup from '../common/ActionGroup';
@@ -36,14 +33,12 @@ import EmptyState from '../common/EmptyState';
 const { Option } = Select;
 const { TextArea } = Input;
 
-type NavSection = 'basic' | 'server' | 'locations' | 'upstream' | 'ssl' | 'cache' | 'security' | 'log' | 'custom' | 'preview';
+type NavSection = 'basic' | 'servers' | 'upstream' | 'cache' | 'security' | 'log' | 'custom' | 'preview';
 
 const navItems: { key: NavSection; label: string; icon: React.ReactNode; description: string }[] = [
-  { key: 'basic', label: '基础设置', icon: <SettingOutlined />, description: '名称、状态、Worker、端口与压缩能力' },
-  { key: 'server', label: 'Server 块', icon: <GlobalOutlined />, description: '域名、根目录与全局代理入口' },
-  { key: 'locations', label: 'Location 路由', icon: <EnvironmentOutlined />, description: '按路径编排处理逻辑和转发规则' },
+  { key: 'basic', label: '基础设置', icon: <SettingOutlined />, description: '名称、状态、Worker 与压缩能力' },
+  { key: 'servers', label: 'Server 块', icon: <GlobalOutlined />, description: '管理多个 Server 块（域名、端口、SSL、路由）' },
   { key: 'upstream', label: 'Upstream 集群', icon: <ClusterOutlined />, description: '定义上游集群与负载均衡策略' },
-  { key: 'ssl', label: 'SSL / TLS', icon: <LockOutlined />, description: '证书、协议、安全传输相关设置' },
   { key: 'cache', label: '缓存', icon: <DatabaseOutlined />, description: '缓存路径、大小与有效期' },
   { key: 'security', label: '安全规则', icon: <SafetyOutlined />, description: '限流、连接数、IP 白名单与头部策略' },
   { key: 'log', label: '日志', icon: <FileTextOutlined />, description: '访问日志、错误日志与轮转控制' },
@@ -62,7 +57,7 @@ interface ConfigEditorProps {
 const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serverId, onSave, onBack }) => {
   const [activeSection, setActiveSection] = useState<NavSection>('basic');
   const [form] = Form.useForm();
-  const [locations, setLocations] = useState<NginxLocation[]>([]);
+  const [serverBlocks, setServerBlocks] = useState<NginxServerBlock[]>([]);
   const [upstreams, setUpstreams] = useState<NginxUpstream[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -80,14 +75,6 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
       form.setFieldsValue({
         worker_processes: 'auto',
         worker_connections: 1024,
-        enable_http: true,
-        http_port: 80,
-        enable_https: false,
-        https_port: 443,
-        http_to_https: false,
-        server_name: '_',
-        root_path: '/usr/local/nginx/html',
-        index_files: 'index.html index.htm',
         access_log_path: '/usr/local/nginx/logs/access.log',
         error_log_path: '/usr/local/nginx/logs/error.log',
         log_format: 'json',
@@ -97,11 +84,8 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
         rotate_max_size: '100M',
         rotate_compress: true,
         rotate_date_ext: true,
-        enable_proxy: false,
         client_max_body_size: '100m',
         gzip: true,
-        ssl_protocols: 'TLSv1.2 TLSv1.3',
-        hsts_max_age: 31536000,
         cache_path: '/var/cache/nginx',
         cache_size: '10m',
         cache_valid_time: '60m',
@@ -109,6 +93,24 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
         conn_limit_num: 100,
         status: 'draft',
       });
+      // 创建一个默认 Server Block
+      setServerBlocks([{
+        name: '默认',
+        enable_http: true,
+        http_port: 80,
+        enable_https: false,
+        https_port: 443,
+        http_to_https: false,
+        server_name: '_',
+        root_path: '/usr/local/nginx/html',
+        index_files: 'index.html index.htm',
+        ssl_protocols: 'TLSv1.2 TLSv1.3',
+        enable_hsts: false,
+        hsts_max_age: 31536000,
+        enable_ocsp: false,
+        enable_proxy: false,
+        locations: [],
+      }]);
       setConfigName('新建配置');
     }
   }, [configId, form]);
@@ -132,15 +134,43 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
       setLoadingConfig(true);
       const config = await getNginxConfigDetail(id);
       setConfigName(config.name);
-      setLocations(config.locations || []);
       setUpstreams(config.upstreams || []);
       setManualConfig(config.manual_config || '');
+
+      // 解析 server_blocks：如果有则直接使用，否则从旧字段构造兼容 block
+      if (config.server_blocks && config.server_blocks.length > 0) {
+        setServerBlocks(config.server_blocks);
+      } else {
+        setServerBlocks([{
+          name: '默认',
+          enable_http: config.enable_http,
+          http_port: config.http_port,
+          enable_https: config.enable_https,
+          https_port: config.https_port,
+          http_to_https: config.http_to_https,
+          certificate_id: config.certificate_id,
+          server_name: config.server_name,
+          root_path: config.root_path,
+          index_files: config.index_files,
+          ssl_protocols: config.ssl_protocols,
+          ssl_ciphers: config.ssl_ciphers,
+          enable_hsts: config.enable_hsts || false,
+          hsts_max_age: config.hsts_max_age || 31536000,
+          enable_ocsp: config.enable_ocsp || false,
+          enable_proxy: config.enable_proxy,
+          proxy_pass: config.proxy_pass,
+          certificate: config.certificate,
+          locations: config.locations || [],
+        }]);
+      }
+
       form.setFieldsValue({
         ...config,
         locations: undefined,
         upstreams: undefined,
         server: undefined,
         certificate: undefined,
+        server_blocks: undefined,
       });
     } catch (error: any) {
       message.error(error.message || '暂时无法加载配置详情');
@@ -164,7 +194,7 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
     return {
       ...values,
       name: normalizedName,
-      locations,
+      server_blocks: serverBlocks,
       manual_config: manualConfig || undefined,
       instance_id: instanceId,
       server_id: serverId,
@@ -258,63 +288,13 @@ const ConfigEditor: React.FC<ConfigEditorProps> = ({ configId, instanceId, serve
                   <Switch checkedChildren="启用" unCheckedChildren="禁用" />
                 </Form.Item>
               </Col>
-              <Col span={8}>
-                <Form.Item name="enable_http" valuePropName="checked" label="启用 HTTP">
-                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="HTTP 端口" name="http_port">
-                  <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
             </Row>
-            <Form.Item label="发布状态" name="status">
-              <Select>
-                <Option value="draft">草稿</Option>
-                <Option value="active">已启用</Option>
-                <Option value="disabled">已停用</Option>
-              </Select>
-            </Form.Item>
           </div>
         );
-      case 'server':
-        return (
-          <div className="config-section-card">
-            <div className="config-section-card__title">Server 块配置</div>
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item label="域名（server_name）" name="server_name" extra="可填写 _、单个域名或多个空格分隔的域名">
-                  <Input placeholder="_ 或 example.com" className="mono" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item label="根目录" name="root_path">
-                  <Input placeholder="/usr/share/nginx/html" className="mono" />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item label="索引文件列表" name="index_files">
-              <Input placeholder="index.html index.htm" className="mono" />
-            </Form.Item>
-            <Form.Item name="enable_proxy" valuePropName="checked" label="启用默认反向代理">
-              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
-            </Form.Item>
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.enable_proxy !== cur.enable_proxy}>
-              {({ getFieldValue }) => getFieldValue('enable_proxy') && (
-                <Form.Item label="默认代理地址" name="proxy_pass" extra="Location 路由可单独覆盖这里的代理地址">
-                  <Input placeholder="http://127.0.0.1:3000" className="mono" />
-                </Form.Item>
-              )}
-            </Form.Item>
-          </div>
-        );
-      case 'locations':
-        return <LocationEditor locations={locations} onChange={setLocations} />;
+      case 'servers':
+        return <ServerBlockEditor serverBlocks={serverBlocks} onChange={setServerBlocks} certificates={certificates} />;
       case 'upstream':
         return <UpstreamEditor upstreams={upstreams} onChange={setUpstreams} />;
-      case 'ssl':
-        return <SSLPanel certificates={certificates} />;
       case 'cache':
         return <CachePanel />;
       case 'security':

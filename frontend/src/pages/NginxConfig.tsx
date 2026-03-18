@@ -83,9 +83,14 @@ const NginxConfigPage: React.FC = () => {
   }, [configs, searchText]);
 
   const summary = useMemo(() => ({
-    active: configs.filter((config) => config.status === 'active').length,
-    draft: configs.filter((config) => config.status === 'draft').length,
-    https: configs.filter((config) => config.enable_https).length,
+    applied: configs.filter((config) => config.status === 'applied').length,
+    idle: configs.filter((config) => config.status !== 'applied').length,
+    https: configs.filter((config) => {
+      if (config.server_blocks && config.server_blocks.length > 0) {
+        return config.server_blocks.some((b) => b.enable_https);
+      }
+      return config.enable_https;
+    }).length,
   }), [configs]);
 
   const handleDelete = async (id: number) => {
@@ -159,8 +164,8 @@ const NginxConfigPage: React.FC = () => {
 
       <div className="metric-grid metric-grid--cols-4">
         <MetricTile label="配置总量" value={total} hint="当前保存的 Nginx 配置模板" icon={<ClusterOutlined />} loading={loading} />
-        <MetricTile label="已启用" value={summary.active} hint="可直接应用到服务器的配置" icon={<GlobalOutlined />} tone="success" loading={loading} />
-        <MetricTile label="草稿数" value={summary.draft} hint="仍在编辑和验证中的配置" icon={<EditOutlined />} tone="warning" loading={loading} />
+        <MetricTile label="使用中" value={summary.applied} hint="已应用到服务器的配置" icon={<GlobalOutlined />} tone="success" loading={loading} />
+        <MetricTile label="未使用" value={summary.idle} hint="备选或待应用的配置" icon={<EditOutlined />} tone="warning" loading={loading} />
         <MetricTile label="HTTPS 配置" value={summary.https} hint="已开启 HTTPS 监听的配置" icon={<SafetyCertificateOutlined />} tone="info" loading={loading} />
       </div>
 
@@ -191,7 +196,9 @@ const NginxConfigPage: React.FC = () => {
           ) : (
             <div className="resource-card-grid">
               {filteredConfigs.map((config) => {
-                const locationCount = config.locations?.length || 0;
+                const locationCount = (config.server_blocks && config.server_blocks.length > 0)
+                  ? config.server_blocks.reduce((sum, b) => sum + (b.locations?.length || 0), 0)
+                  : (config.locations?.length || 0);
                 return (
                   <div key={config.id} className="resource-card">
                     <div className="resource-card__header">
@@ -199,13 +206,27 @@ const NginxConfigPage: React.FC = () => {
                         <div className="resource-card__title">{config.name}</div>
                         <div className="resource-card__description">{config.description || '未填写说明'}</div>
                       </div>
-                      <StatusBadge status={config.status} compact />
+                      {config.status === 'applied' && <StatusBadge status="applied" compact />}
                     </div>
 
                     <div className="resource-card__tags" style={{ marginTop: 16 }}>
-                      {config.enable_http && <StatusBadge status="valid" label={`HTTP ${config.http_port}`} compact />}
-                      {config.enable_https && <StatusBadge status="valid" label={`HTTPS ${config.https_port}`} compact />}
-                      <StatusBadge status="default" label={config.server_name || '_'} compact />
+                      {(config.server_blocks && config.server_blocks.length > 0) ? (
+                        <>
+                          {config.server_blocks.map((block, idx) => (
+                            <React.Fragment key={idx}>
+                              {block.enable_http && <StatusBadge status="valid" label={`HTTP:${block.http_port || 80}`} compact />}
+                              {block.enable_https && <StatusBadge status="valid" label={`HTTPS:${block.https_port || 443}`} compact />}
+                            </React.Fragment>
+                          ))}
+                          <StatusBadge status="info" label={`${config.server_blocks.length} 个 Server 块`} compact />
+                        </>
+                      ) : (
+                        <>
+                          {config.enable_http && <StatusBadge status="valid" label={`HTTP ${config.http_port}`} compact />}
+                          {config.enable_https && <StatusBadge status="valid" label={`HTTPS ${config.https_port}`} compact />}
+                          <StatusBadge status="default" label={config.server_name || '_'} compact />
+                        </>
+                      )}
                       {locationCount > 0 && <StatusBadge status="info" label={`${locationCount} 条路由`} compact />}
                     </div>
 
