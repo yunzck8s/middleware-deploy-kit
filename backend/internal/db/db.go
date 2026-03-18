@@ -80,6 +80,8 @@ func AutoMigrate() error {
 		&models.CertificateAlertConfig{},
 		&models.CertificateAlertLog{},
 		&models.SystemConfig{},
+		&models.RedisCluster{},
+		&models.RedisClusterNode{},
 	)
 }
 

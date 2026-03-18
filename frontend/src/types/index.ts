@@ -395,6 +395,47 @@ export interface PackageMetadata {
   requirements?: PackageRequirements; // 系统要求
 }
 
+// Redis 集群
+export interface RedisCluster {
+  id: number;
+  name: string;
+  has_password: boolean;
+  cluster_mode: '3x2' | '6x1';
+  status: 'pending' | 'deploying' | 'deployed' | 'initializing' | 'running' | 'failed';
+  total_nodes: number;
+  package_id?: number;
+  version: string;
+  error_msg: string;
+  nodes?: RedisClusterNode[];
+  created_at: string;
+  updated_at: string;
+}
+
+// Redis 集群节点
+export interface RedisClusterNode {
+  id: number;
+  cluster_id: number;
+  server_id: number;
+  server?: Server;
+  port: number;
+  role: 'pending' | 'master' | 'replica';
+  node_id: string;
+  instance_id?: number;
+  deployment_id?: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// 创建集群请求
+export interface CreateClusterDTO {
+  name: string;
+  cluster_mode: '3x2' | '6x1';
+  password: string;
+  package_id: number;
+  nodes: { server_id: number; ports: number[] }[];
+}
+
 // Nginx 配置应用记录
 export interface NginxConfigApply {
   id: number;

@@ -78,8 +78,8 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		OSVersion:   osVersion,
 	}
 
-	if req.Name != models.MiddlewareNameNginx {
-		response.BadRequest(c, "当前仅支持上传 Nginx 离线包")
+	if !models.AllowedMiddlewareNames[req.Name] {
+		response.BadRequest(c, "不支持的中间件类型: "+req.Name)
 		return
 	}
 
@@ -144,9 +144,9 @@ func (p *PackageAPI) Upload(c *gin.Context) {
 		return
 	}
 
-	if identity.Name != models.MiddlewareNameNginx {
+	if !models.AllowedMiddlewareNames[identity.Name] {
 		os.Remove(filePath)
-		response.BadRequest(c, "ZIP 包中的 metadata.json 必须声明为 nginx")
+		response.BadRequest(c, "ZIP 包中的 metadata.json 声明了不支持的中间件类型: "+identity.Name)
 		return
 	}
 	if identity.Version == "" {
@@ -222,13 +222,16 @@ func (p *PackageAPI) List(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	if name != "" && name != models.MiddlewareNameNginx {
-		response.BadRequest(c, "当前仅支持查询 Nginx 离线包")
+	if name != "" && !models.AllowedMiddlewareNames[name] {
+		response.BadRequest(c, "不支持的中间件类型: "+name)
 		return
 	}
 
 	var packages []models.MiddlewarePackage
-	query := db.DB.Where("status = ? AND name = ?", "active", models.MiddlewareNameNginx)
+	query := db.DB.Where("status = ?", "active")
+	if name != "" {
+		query = query.Where("name = ?", name)
+	}
 
 	if osType != "" {
 		query = query.Where("os_type = ?", osType)
@@ -263,7 +266,7 @@ func (p *PackageAPI) Get(c *gin.Context) {
 		return
 	}
 
-	pkg, err := findActiveNginxPackage(uint(id))
+	pkg, err := findActivePackage(uint(id))
 	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
@@ -280,7 +283,7 @@ func (p *PackageAPI) Delete(c *gin.Context) {
 		return
 	}
 
-	pkg, err := findActiveNginxPackage(uint(id))
+	pkg, err := findActivePackage(uint(id))
 	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
@@ -305,7 +308,7 @@ func (p *PackageAPI) GetMetadata(c *gin.Context) {
 		return
 	}
 
-	pkg, err := findActiveNginxPackage(uint(id))
+	pkg, err := findActivePackage(uint(id))
 	if err != nil {
 		response.NotFound(c, "离线包不存在")
 		return
@@ -326,9 +329,9 @@ func (p *PackageAPI) GetMetadata(c *gin.Context) {
 	response.Success(c, metadata)
 }
 
-func findActiveNginxPackage(id uint) (*models.MiddlewarePackage, error) {
+func findActivePackage(id uint) (*models.MiddlewarePackage, error) {
 	var pkg models.MiddlewarePackage
-	if err := db.DB.Where("id = ? AND name = ? AND status = ?", id, models.MiddlewareNameNginx, "active").First(&pkg).Error; err != nil {
+	if err := db.DB.Where("id = ? AND status = ?", id, "active").First(&pkg).Error; err != nil {
 		return nil, err
 	}
 	return &pkg, nil

@@ -7,6 +7,13 @@ import (
 )
 
 const MiddlewareNameNginx = "nginx"
+const MiddlewareNameRedis = "redis"
+
+// AllowedMiddlewareNames 允许的中间件名称集合
+var AllowedMiddlewareNames = map[string]bool{
+	MiddlewareNameNginx: true,
+	MiddlewareNameRedis: true,
+}
 
 // MiddlewarePackage 中间件离线包模型
 type MiddlewarePackage struct {

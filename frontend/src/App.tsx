@@ -17,6 +17,9 @@ import Notifications from './pages/Notifications';
 import SystemConfig from './pages/SystemConfig';
 import InstanceList from './pages/InstanceList';
 import InstanceDetail from './pages/InstanceDetail';
+import RedisClusterList from './pages/RedisClusterList';
+import RedisClusterWizard from './pages/RedisClusterWizard';
+import RedisClusterDetail from './pages/RedisClusterDetail';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useAuth();
@@ -158,9 +161,14 @@ function App() {
             <Route path="system-config" element={<SystemConfig />} />
             <Route path="middleware/:type/instances" element={<InstanceList />} />
             <Route path="middleware/:type/instances/:id" element={<InstanceDetail />} />
-            <Route path="middleware/nginx/packages" element={<Middleware />} />
-            <Route path="middleware/nginx/certificates" element={<Certificates />} />
-            <Route path="middleware/redis/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
+            <Route path="packages" element={<Middleware />} />
+            <Route path="middleware/nginx/packages" element={<Navigate to="/packages" replace />} />
+            <Route path="middleware/redis/packages" element={<Navigate to="/packages" replace />} />
+            <Route path="certificates" element={<Certificates />} />
+            <Route path="middleware/nginx/certificates" element={<Navigate to="/certificates" replace />} />
+            <Route path="middleware/redis/clusters" element={<RedisClusterList />} />
+            <Route path="middleware/redis/clusters/new" element={<RedisClusterWizard />} />
+            <Route path="middleware/redis/clusters/:id" element={<RedisClusterDetail />} />
             <Route path="middleware/openssh/*" element={<Navigate to="/middleware/nginx/packages" replace />} />
           </Route>
         </Routes>

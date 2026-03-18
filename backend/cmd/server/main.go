@@ -153,6 +153,34 @@ func setupRoutes(r *gin.Engine, cfg *config.Config, notificationService *service
 		middleware.GET("/instances/:id/stats", middlewareInstanceAPI.GetMiddlewareInstanceStats) // 获取实例统计
 	}
 
+	// Redis 实例管理 API
+	redisAPI := api.NewRedisAPI(cfg)
+	redisInstances := v1.Group("/redis/instances")
+	redisInstances.Use(api.AuthMiddleware(cfg))
+	{
+		redisInstances.GET("/:id/config", redisAPI.GetConfig)       // 读取 Redis 配置
+		redisInstances.PUT("/:id/config", redisAPI.UpdateConfig)    // 更新 Redis 配置
+		redisInstances.POST("/:id/test", redisAPI.TestConnection)   // 测试 Redis 连接
+		redisInstances.POST("/:id/scan", redisAPI.ScanKeys)         // SCAN 扫描 key
+		redisInstances.POST("/:id/key", redisAPI.GetKey)            // 获取 key 值
+		redisInstances.DELETE("/:id/key", redisAPI.DeleteKey)       // 删除 key
+		redisInstances.POST("/:id/seed", redisAPI.SeedTestData)   // 写入测试数据
+	}
+
+	// Redis 集群管理 API
+	redisClusterAPI := api.NewRedisClusterAPI(cfg, deploymentAPI)
+	redisClusters := v1.Group("/redis/clusters")
+	redisClusters.Use(api.AuthMiddleware(cfg))
+	{
+		redisClusters.POST("", redisClusterAPI.Create)            // 创建集群
+		redisClusters.GET("", redisClusterAPI.List)               // 获取集群列表
+		redisClusters.GET("/:id", redisClusterAPI.Get)            // 获取集群详情
+		redisClusters.DELETE("/:id", redisClusterAPI.Delete)      // 删除集群
+		redisClusters.POST("/:id/deploy", redisClusterAPI.Deploy) // 部署集群节点
+		redisClusters.POST("/:id/init", redisClusterAPI.Initialize) // 初始化集群
+		redisClusters.GET("/:id/status", redisClusterAPI.Status)  // 获取集群状态
+	}
+
 	// 服务器管理 API
 	serverAPI := api.NewServerAPI(cfg)
 	servers := v1.Group("/servers")

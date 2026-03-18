@@ -39,17 +39,28 @@ const routes: RouteMeta[] = [
   { match: '/notifications', title: '通知中心', path: '/notifications' },
   { match: '/system-config', title: '系统配置', path: '/system-config' },
   { match: '/middleware/nginx/instances', title: 'Nginx 实例', path: '/middleware/nginx/instances' },
-  { match: '/middleware/nginx/packages', title: '离线包', path: '/middleware/nginx/packages' },
-  { match: '/middleware/nginx/certificates', title: 'SSL 证书', path: '/middleware/nginx/certificates' },
+  { match: '/packages', title: '离线包', path: '/packages' },
+  { match: '/certificates', title: 'SSL 证书', path: '/certificates' },
+  { match: '/middleware/redis/instances', title: 'Redis 实例', path: '/middleware/redis/instances' },
+  { match: '/middleware/redis/clusters', title: 'Redis 集群', path: '/middleware/redis/clusters' },
 ];
 
 const menuItems: MenuProps['items'] = [
   { key: '/', icon: <DashboardOutlined />, label: '概览' },
   { key: '/servers', icon: <CloudServerOutlined />, label: '服务器' },
+  { key: '/packages', icon: <InboxOutlined />, label: '离线包' },
+  { key: '/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL 证书' },
   { type: 'divider' },
-  { key: '/middleware/nginx/packages', icon: <InboxOutlined />, label: '离线包' },
-  { key: '/middleware/nginx/certificates', icon: <SafetyCertificateOutlined />, label: 'SSL 证书' },
   { key: '/middleware/nginx/instances', icon: <RocketOutlined />, label: 'Nginx 实例' },
+  {
+    key: 'redis-group',
+    icon: <RocketOutlined />,
+    label: 'Redis',
+    children: [
+      { key: '/middleware/redis/instances', label: 'Redis 实例' },
+      { key: '/middleware/redis/clusters', label: 'Redis 集群' },
+    ],
+  },
   { type: 'divider' },
   { key: '/system-config', icon: <SettingOutlined />, label: '系统配置' },
 ];
@@ -89,6 +100,8 @@ const MainLayout = () => {
 
     if (location.pathname.startsWith('/middleware/nginx/')) {
       items.push({ title: 'Nginx' });
+    } else if (location.pathname.startsWith('/middleware/redis/')) {
+      items.push({ title: 'Redis' });
     }
 
     items.push({ title: activeRoute.title, path: activeRoute.path });
@@ -121,10 +134,10 @@ const MainLayout = () => {
     <div className="shell-sidebar">
       <div className={`shell-brand ${compactSidebar ? 'shell-brand--collapsed' : ''}`.trim()}>
         <div className="shell-brand__top">
-          <div className="shell-brand__mark">N</div>
+          <div className="shell-brand__mark">M</div>
           {(!collapsed || isMobile) && (
             <div className="shell-brand__copy">
-              <div className="shell-brand__title">Nginx 运维控制台</div>
+              <div className="shell-brand__title">中间件运维控制台</div>
             </div>
           )}
         </div>
@@ -135,6 +148,7 @@ const MainLayout = () => {
           className="shell-nav"
           theme={isDark ? 'dark' : 'light'}
           selectedKeys={[activeRoute.path ?? location.pathname]}
+          defaultOpenKeys={['nginx-group', 'redis-group']}
           mode="inline"
           items={menuItems}
           style={{

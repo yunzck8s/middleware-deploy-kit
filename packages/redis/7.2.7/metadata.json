@@ -1,0 +1,87 @@
+{
+  "name": "redis",
+  "version": "7.2.7",
+  "display_name": "Redis Server",
+  "description": "Redis 7.2.7 离线编译安装包，支持 AOF 持久化、密码认证、内存策略等企业级功能",
+  "install_script": "install_redis_offline.sh",
+  "supported_os": [
+    {
+      "type": "rocky",
+      "versions": ["9.4"]
+    },
+    {
+      "type": "centos",
+      "versions": ["7.9"]
+    },
+    {
+      "type": "openEuler",
+      "versions": ["22.03"]
+    },
+    {
+      "type": "kylin",
+      "versions": ["V10-SP3"]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "REDIS_PORT",
+      "label": "Redis 端口",
+      "description": "Redis 服务监听端口",
+      "type": "number",
+      "default": 6379,
+      "required": false,
+      "min": 1,
+      "max": 65535
+    },
+    {
+      "name": "REDIS_PASSWORD",
+      "label": "Redis 密码",
+      "description": "Redis 认证密码，留空则自动生成随机密码",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "placeholder": "留空自动生成"
+    },
+    {
+      "name": "REDIS_CLUSTER_ENABLED",
+      "label": "启用集群模式",
+      "description": "是否以集群模式部署（由集群向导自动设置）",
+      "type": "boolean",
+      "default": false,
+      "required": false,
+      "advanced": true
+    },
+    {
+      "name": "REDIS_PORTS",
+      "label": "集群端口列表",
+      "description": "集群模式下的端口列表，逗号分隔（由集群向导自动设置）",
+      "type": "string",
+      "default": "",
+      "required": false,
+      "advanced": true
+    },
+    {
+      "name": "REDIS_CLUSTER_BASE_DIR",
+      "label": "集群数据目录",
+      "description": "集群模式下的数据根目录",
+      "type": "string",
+      "default": "/data/redis-cluster",
+      "required": false,
+      "advanced": true
+    }
+  ],
+  "features": [
+    "AOF 持久化",
+    "RDB 快照",
+    "密码认证",
+    "内存策略管理",
+    "Lazyfree 异步删除",
+    "Systemd 服务管理",
+    "内核参数优化"
+  ],
+  "requirements": {
+    "disk_space": "200MB",
+    "memory": "1GB",
+    "root_required": true
+  }
+}

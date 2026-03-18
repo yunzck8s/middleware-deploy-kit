@@ -146,8 +146,8 @@ func (a *DeploymentAPI) Create(c *gin.Context) {
 			return
 		}
 		var pkg models.MiddlewarePackage
-		if err := db.DB.Where("id = ? AND name = ? AND status = ?", *req.PackageID, models.MiddlewareNameNginx, "active").First(&pkg).Error; err != nil {
-			response.Error(c, http.StatusBadRequest, "请选择有效的 Nginx 离线包")
+		if err := db.DB.Where("id = ? AND status = ?", *req.PackageID, "active").First(&pkg).Error; err != nil {
+			response.Error(c, http.StatusBadRequest, "请选择有效的离线包")
 			return
 		}
 		deployment.PackageID = req.PackageID
@@ -252,14 +252,24 @@ func (a *DeploymentAPI) Delete(c *gin.Context) {
 		return
 	}
 
-	// 不能删除正在执行的任务
+	// 如果任务正在执行，先取消
 	if deployment.Status == models.DeployStatusRunning {
-		response.Error(c, http.StatusBadRequest, "不能删除正在执行的任务")
-		return
+		if exec, ok := deployMgr.Get(uint(id)); ok && exec != nil {
+			exec.cancel()
+			<-exec.done // 等待执行结束
+			deployMgr.Remove(uint(id))
+		}
+		// 重新加载状态
+		db.DB.First(&deployment, id)
+		if deployment.Status == models.DeployStatusRunning {
+			deployment.Status = models.DeployStatusCancelled
+			db.DB.Save(&deployment)
+		}
 	}
 
 	// 删除关联日志
 	db.DB.Where("deployment_id = ?", id).Delete(&models.DeploymentLog{})
+	db.DB.Where("deployment_id = ?", id).Delete(&models.DeploymentHook{})
 	db.DB.Delete(&deployment)
 
 	response.Success(c, nil)
@@ -787,10 +797,74 @@ func (a *DeploymentAPI) deployPackage(client *ssh.Client, sftpClient *sftp.Clien
 	a.updateLog(deployment.ID, *step, "success", strings.TrimSpace(output), "")
 	(*step)++
 
+	// Redis 部署：从脚本输出中提取自动生成的密码，回写到 deploy_params
+	if pkg.Name == models.MiddlewareNameRedis {
+		a.extractRedisPassword(deployment, output)
+	}
+
 	return nil
 }
 
-// deployCertificate 部署证书
+// extractRedisPassword 从脚本输出中提取 Redis 密码并回写到 deploy_params 和关联实例
+func (a *DeploymentAPI) extractRedisPassword(deployment *models.Deployment, output string) {
+	// 去除 ANSI 颜色码
+	cleaned := output
+	for _, code := range []string{"\x1b[0;34m", "\x1b[0;32m", "\x1b[1;33m", "\x1b[0;31m", "\x1b[0m"} {
+		cleaned = strings.ReplaceAll(cleaned, code, "")
+	}
+
+	password := ""
+	for _, line := range strings.Split(cleaned, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "Redis密码:") {
+			parts := strings.SplitN(line, "Redis密码:", 2)
+			if len(parts) == 2 {
+				password = strings.TrimSpace(parts[1])
+			}
+			break
+		}
+	}
+
+	if password == "" {
+		return
+	}
+
+	// 回写到 deployment.deploy_params
+	var params map[string]interface{}
+	if deployment.DeployParams != "" {
+		if err := json.Unmarshal([]byte(deployment.DeployParams), &params); err != nil {
+			params = make(map[string]interface{})
+		}
+	} else {
+		params = make(map[string]interface{})
+	}
+	params["REDIS_PASSWORD"] = password
+	if newParams, err := json.Marshal(params); err == nil {
+		db.DB.Model(deployment).Update("deploy_params", string(newParams))
+	}
+
+	// 同步到关联的 MiddlewareInstance
+	var instances []models.MiddlewareInstance
+	db.DB.Where("server_id = ? AND type = ? AND package_id = ?",
+		deployment.ServerID, models.MiddlewareNameRedis, deployment.PackageID).Find(&instances)
+	for _, inst := range instances {
+		var instParams map[string]interface{}
+		if inst.DeployParams != "" {
+			if err := json.Unmarshal([]byte(inst.DeployParams), &instParams); err != nil {
+				instParams = make(map[string]interface{})
+			}
+		} else {
+			instParams = make(map[string]interface{})
+		}
+		instParams["REDIS_PASSWORD"] = password
+		if newParams, err := json.Marshal(instParams); err == nil {
+			db.DB.Model(&inst).Update("deploy_params", string(newParams))
+		}
+	}
+
+	logger.Infof("Redis 密码已从部署日志提取并回写: deployment=%d", deployment.ID)
+}
+
 func (a *DeploymentAPI) deployCertificate(client *ssh.Client, sftpClient *sftp.Client, deployment *models.Deployment, step *int) error {
 	cert := deployment.Certificate
 	if cert == nil {

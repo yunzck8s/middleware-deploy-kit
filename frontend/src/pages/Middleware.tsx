@@ -41,7 +41,7 @@ const { Option } = Select;
 
 const MIDDLEWARE_TYPES = [
   { label: 'Nginx', value: 'nginx' },
-  { label: 'Redis', value: 'redis', disabled: true },
+  { label: 'Redis', value: 'redis' },
   { label: 'OpenSSH', value: 'openssh', disabled: true },
 ];
 

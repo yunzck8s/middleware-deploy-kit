@@ -2,6 +2,53 @@
 
 ---
 
+## 阶段十六：Redis 实例详情页定制 + 连接测试 + 数据浏览器（2026-03-18）
+
+### 前端改造 ✅
+- [x] Tab 条件渲染：Nginx 保持配置管理/证书管理/部署历史，Redis 显示 Redis 配置/连接测试/数据浏览/部署历史
+- [x] 统计卡片适配：Redis 显示端口 + 部署数（隐藏配置数和证书数）
+- [x] RedisConfigTab：通过 SSH 读取/编辑远程 redis.conf，支持保存后重启
+- [x] RedisTestTab：一键 PING 测试 + INFO server/clients 信息展示
+- [x] RedisBrowserTab：SCAN 扫描 key + 查看值（支持 string/list/set/zset/hash）+ 删除 key
+
+### 后端 API ✅
+- [x] 新建 backend/internal/api/redis.go：6 个 API（GetConfig/UpdateConfig/TestConnection/ScanKeys/GetKey/DeleteKey）
+- [x] 路由注册：/api/v1/redis/instances/:id/...
+- [x] 前端 API 层：frontend/src/api/redisInstance.ts
+
+### 验证 ✅
+- [x] go build ./... 编译通过
+- [x] npm run build 编译通过
+
+---
+
+## 阶段十五：Redis 部署功能（单机 + 集群模式）（2026-03-18）
+
+### 阶段一：解除硬编码限制 + Redis 单机部署 ✅
+- [x] 1.1 添加 Redis 常量和 AllowedMiddlewareNames 集合
+- [x] 1.2 解除 package.go 5 处 nginx 硬编码
+- [x] 1.3 解除 deployment.go 包名校验硬编码
+- [x] 1.4 禁用 nginx_cleanup.go 清理逻辑
+- [x] 1.5 前端启用 Redis 选项（Middleware.tsx、App.tsx、Layout.tsx）
+- [x] 1.6 侧边栏改为分组菜单（Nginx 组 + Redis 组）
+- [x] 1.6 编译验证通过
+
+### 阶段二：Redis 集群模式 ✅
+- [x] 2.1 数据模型：RedisCluster + RedisClusterNode（redis_cluster.go）
+- [x] 2.2 安装脚本改造：集群模式分支 + redis@.service 模板化服务
+- [x] 2.3 metadata.json：添加集群高级参数
+- [x] 2.4 后端 API：redis_cluster.go（Create/List/Get/Delete/Deploy/Initialize/Status）
+- [x] 2.5 路由注册：main.go 添加 /api/v1/redis/clusters 路由组
+- [x] 2.6 前端类型定义：RedisCluster、RedisClusterNode、CreateClusterDTO
+- [x] 2.7 前端 API 文件：redisCluster.ts
+- [x] 2.8 集群列表页：RedisClusterList.tsx
+- [x] 2.9 集群创建向导：RedisClusterWizard.tsx（3 步向导）
+- [x] 2.10 集群详情页：RedisClusterDetail.tsx
+- [x] 2.11 路由和菜单集成
+- [x] 2.12 前后端编译验证通过
+
+---
+
 ## 阶段十四：配置管理优化 — 应用流程简化 + 状态管理 + 卡片展示（2026-03-18）
 
 ### 已完成
