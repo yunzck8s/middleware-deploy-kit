@@ -26,7 +26,7 @@ build_for_arch() {
 
   echo ""
   echo "==> Building backend (linux/${arch})..."
-  mkdir -p "$BUILD_DIR"/{bin,web,packages,scripts}
+  mkdir -p "$BUILD_DIR"/{bin,web}
 
   # 构建后端
   cd "$PROJECT_ROOT/backend"
@@ -37,22 +37,6 @@ build_for_arch() {
 
   # 复制前端产物
   cp -r "$PROJECT_ROOT/frontend/dist/"* "$BUILD_DIR/web/"
-
-  # 复制 Nginx 离线包
-  cp -r "$PROJECT_ROOT/packages/nginx" "$BUILD_DIR/packages/"
-
-  # 复制脚本
-  cp "$PROJECT_ROOT/scripts/install.sh" "$BUILD_DIR/scripts/"
-  cp "$PROJECT_ROOT/scripts/uninstall.sh" "$BUILD_DIR/scripts/"
-  cp "$PROJECT_ROOT/scripts/upgrade.sh" "$BUILD_DIR/scripts/"
-  chmod +x "$BUILD_DIR/scripts/"*.sh
-
-  # VERSION 文件
-  cat > "$BUILD_DIR/VERSION" <<EOF
-VERSION=${VERSION}
-BUILD_TIME=${BUILD_TIME}
-ARCH=${arch}
-EOF
 
   # 打包
   echo "==> Creating archive: ${ARCHIVE_NAME}..."
