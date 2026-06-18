@@ -1,10 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/config"
@@ -286,9 +287,14 @@ func (a *RedisClusterAPI) Deploy(c *gin.Context) {
 		}
 		portsStr := strings.Join(portStrs, ",")
 
-		// 构建部署参数
-		deployParams := fmt.Sprintf(`{"REDIS_CLUSTER_ENABLED":"true","REDIS_PORTS":"%s","REDIS_PASSWORD":"%s"}`,
-			portsStr, cluster.Password)
+		// 构建部署参数（用 json.Marshal 避免密码含特殊字符时的注入）
+		paramsMap := map[string]string{
+			"REDIS_CLUSTER_ENABLED": "true",
+			"REDIS_PORTS":           portsStr,
+			"REDIS_PASSWORD":        cluster.Password,
+		}
+		deployParamsBytes, _ := json.Marshal(paramsMap)
+		deployParams := string(deployParamsBytes)
 
 		// 创建部署任务
 		deployment := models.Deployment{
@@ -325,42 +331,30 @@ func (a *RedisClusterAPI) Deploy(c *gin.Context) {
 		clusterID := cluster.ID
 		autoInit := deployReq.AutoInit
 
-		// 执行所有部署任务
+		// 并发执行所有部署任务（各服务器独立部署）
+		var wg sync.WaitGroup
+		for _, deployID := range deploymentIDs {
+			wg.Add(1)
+			go func(dID uint) {
+				defer wg.Done()
+				var dep models.Deployment
+				if err := db.DB.Preload("Server").Preload("Package").First(&dep, dID).Error; err != nil {
+					return
+				}
+				a.deploymentAPI.executeDeployment(&dep)
+			}(deployID)
+		}
+		wg.Wait()
+
+		// executeDeployment 是同步阻塞调用，wg.Wait() 返回时所有部署已完成，直接查询最终状态
+		allSuccess := true
 		for _, deployID := range deploymentIDs {
 			var dep models.Deployment
-			if err := db.DB.Preload("Server").Preload("Package").First(&dep, deployID).Error; err != nil {
-				continue
-			}
-			a.deploymentAPI.executeDeployment(&dep)
-		}
-
-		// 等待所有部署完成（轮询）
-		allSuccess := true
-		allDone := false
-		for i := 0; i < 360; i++ { // 最多等待 30 分钟
-			time.Sleep(5 * time.Second)
-
-			allDone = true
-			allSuccess = true
-			for _, deployID := range deploymentIDs {
-				var dep models.Deployment
-				db.DB.First(&dep, deployID)
-				if dep.Status == models.DeployStatusPending || dep.Status == models.DeployStatusRunning {
-					allDone = false
-					break
-				}
-				if dep.Status != models.DeployStatusSuccess {
-					allSuccess = false
-				}
-			}
-			if allDone {
+			db.DB.First(&dep, deployID)
+			if dep.Status != models.DeployStatusSuccess {
+				allSuccess = false
 				break
 			}
-		}
-
-		// 超时未完成视为失败
-		if !allDone {
-			allSuccess = false
 		}
 
 		if allSuccess {
@@ -444,7 +438,7 @@ func (a *RedisClusterAPI) initializeCluster(clusterID uint) {
 	cmd := fmt.Sprintf("redis-cli --cluster create %s --cluster-replicas 1 --cluster-yes",
 		strings.Join(nodeAddrs, " "))
 	if cluster.Password != "" {
-		cmd += fmt.Sprintf(" -a '%s'", cluster.Password)
+		cmd += fmt.Sprintf(" -a '%s' --no-auth-warning", shellEscapeSingleQuote(cluster.Password))
 	}
 
 	// SSH 到第一个节点执行
@@ -483,7 +477,9 @@ func (a *RedisClusterAPI) initializeCluster(clusterID uint) {
 	logger.Infof("Redis 集群初始化输出: %s", string(output))
 
 	// 解析输出，获取节点 ID 和角色
-	a.parseClusterNodes(cluster.ID, firstNode.Server)
+	if err := a.parseClusterNodes(cluster.ID, firstNode.Server); err != nil {
+		logger.Warnf("解析集群节点信息失败（节点角色将不可见）: %v", err)
+	}
 
 	db.DB.Model(&cluster).Updates(map[string]interface{}{
 		"status":    "running",
@@ -493,29 +489,29 @@ func (a *RedisClusterAPI) initializeCluster(clusterID uint) {
 	logger.Infof("Redis 集群初始化完成: %s", cluster.Name)
 }
 
-// parseClusterNodes 通过 cluster nodes 命令获取节点信息
-func (a *RedisClusterAPI) parseClusterNodes(clusterID uint, server models.Server) {
+// parseClusterNodes 通过 cluster nodes 命令获取节点信息，返回 error 便于调用方记录
+func (a *RedisClusterAPI) parseClusterNodes(clusterID uint, server models.Server) error {
 	var cluster models.RedisCluster
 	if err := db.DB.Preload("Nodes").Preload("Nodes.Server").First(&cluster, clusterID).Error; err != nil {
-		return
+		return fmt.Errorf("查询集群失败: %v", err)
 	}
 
 	sshClient, sftpClient, err := connectToServer(&server)
 	if err != nil {
-		return
+		return fmt.Errorf("SSH 连接失败: %v", err)
 	}
 	defer sshClient.Close()
 	defer sftpClient.Close()
 
 	session, err := sshClient.NewSession()
 	if err != nil {
-		return
+		return fmt.Errorf("创建 SSH 会话失败: %v", err)
 	}
 	defer session.Close()
 
 	cmd := "export PATH=/usr/local/redis/bin:$PATH && redis-cli"
 	if cluster.Password != "" {
-		cmd += fmt.Sprintf(" -a '%s'", cluster.Password)
+		cmd += fmt.Sprintf(" -a '%s' --no-auth-warning", shellEscapeSingleQuote(cluster.Password))
 	}
 
 	// 使用第一个节点的端口
@@ -526,8 +522,7 @@ func (a *RedisClusterAPI) parseClusterNodes(clusterID uint, server models.Server
 
 	output, err := session.CombinedOutput(cmd)
 	if err != nil {
-		logger.Warnf("获取集群节点信息失败: %v", err)
-		return
+		return fmt.Errorf("获取集群节点信息失败: %v", err)
 	}
 
 	// 解析 cluster nodes 输出
@@ -573,6 +568,7 @@ func (a *RedisClusterAPI) parseClusterNodes(clusterID uint, server models.Server
 			}
 		}
 	}
+	return nil
 }
 
 // Status 获取集群实时状态

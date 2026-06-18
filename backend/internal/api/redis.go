@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"io"
+
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/sftp"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/config"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/db"
 	"github.com/yunzck8s/middleware-deploy-kit/backend/internal/models"
@@ -105,6 +108,25 @@ func sshExec(sshClient *ssh.Client, cmd string) (string, error) {
 	return string(output), nil
 }
 
+// shellEscapeSingleQuote 对 single-quote 包裹的 shell 参数做安全转义
+// 将 ' 替换为 '"'"'（POSIX shell 标准转义），防止 shell 注入
+func shellEscapeSingleQuote(s string) string {
+	return strings.ReplaceAll(s, "'", "'\"'\"'")
+}
+
+// writeTempFileSFTP 通过 SFTP 写内容到远端临时文件，避免 heredoc 终止符冲突
+func writeTempFileSFTP(sftpClient *sftp.Client, path, content string) error {
+	f, err := sftpClient.Create(path)
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %v", err)
+	}
+	defer f.Close()
+	if _, err := io.WriteString(f, content); err != nil {
+		return fmt.Errorf("写入临时文件失败: %v", err)
+	}
+	return nil
+}
+
 // buildRedisCLI 构建 redis-cli 命令前缀
 // 自动探测 redis-cli 路径：优先 /usr/local/redis/bin/redis-cli，回退到 PATH
 func buildRedisCLI(info redisConnInfo) string {
@@ -112,7 +134,7 @@ func buildRedisCLI(info redisConnInfo) string {
 	cli := "$(if [ -x /usr/local/redis/bin/redis-cli ]; then echo /usr/local/redis/bin/redis-cli; else echo redis-cli; fi)"
 	cmd := fmt.Sprintf("%s -p %s", cli, info.Port)
 	if info.Password != "" {
-		cmd += fmt.Sprintf(" -a '%s' --no-auth-warning", info.Password)
+		cmd += fmt.Sprintf(" -a '%s' --no-auth-warning", shellEscapeSingleQuote(info.Password))
 	}
 	return cmd
 }
@@ -126,12 +148,13 @@ func (r *RedisAPI) GetConfig(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	// 使用 sudo cat 读取配置文件（配置文件可能属于 redis 用户，SFTP 权限不足）
 	output, err := sshExec(sshClient, fmt.Sprintf("sudo cat %s", info.ConfPath))
@@ -167,12 +190,13 @@ func (r *RedisAPI) UpdateConfig(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	// 备份原配置（使用 sudo）
 	backupPath := info.ConfPath + ".bak." + time.Now().Format("20060102150405")
@@ -180,11 +204,9 @@ func (r *RedisAPI) UpdateConfig(c *gin.Context) {
 		logger.Warnf("备份配置失败（可能文件不存在）: %v", err)
 	}
 
-	// 写入新配置（通过 sudo tee 写入，解决权限问题）
-	// 使用 heredoc 方式避免特殊字符转义问题
-	tmpPath := "/tmp/redis_conf_" + time.Now().Format("20060102150405") + ".tmp"
-	writeCmd := fmt.Sprintf("cat > %s << 'REDIS_CONF_EOF'\n%s\nREDIS_CONF_EOF", tmpPath, req.Content)
-	if _, err := sshExec(sshClient, writeCmd); err != nil {
+	// 通过 SFTP 写入临时文件，避免 heredoc 终止符与配置内容冲突
+	tmpPath := fmt.Sprintf("/tmp/redis_conf_%d.tmp", time.Now().UnixNano())
+	if err := writeTempFileSFTP(sftpClient, tmpPath, req.Content); err != nil {
 		response.InternalServerError(c, "写入临时文件失败: "+err.Error())
 		return
 	}
@@ -232,12 +254,13 @@ func (r *RedisAPI) TestConnection(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	cli := buildRedisCLI(info)
 	result := gin.H{}
@@ -328,18 +351,19 @@ func (r *RedisAPI) ScanKeys(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	cli := buildRedisCLI(info)
 
 	// 使用 --scan --pattern 安全地扫描 key（不阻塞）
 	// 限制数量用 head
-	scanCmd := fmt.Sprintf("%s --scan --pattern '%s' | head -n %d", cli, req.Pattern, req.Count)
+	scanCmd := fmt.Sprintf("%s --scan --pattern '%s' | head -n %d", cli, shellEscapeSingleQuote(req.Pattern), req.Count)
 	output, err := sshExec(sshClient, scanCmd)
 	if err != nil {
 		// head 会导致 pipe broken，忽略
@@ -378,7 +402,7 @@ func (r *RedisAPI) ScanKeys(c *gin.Context) {
 		// 简单实现：用 printf + redis-cli --pipe 方式
 		pipeCmd := "printf '"
 		for _, key := range keys {
-			pipeCmd += fmt.Sprintf("TYPE %s\\nTTL %s\\n", key, key)
+			pipeCmd += fmt.Sprintf("TYPE %s\\nTTL %s\\n", shellEscapeSingleQuote(key), shellEscapeSingleQuote(key))
 		}
 		pipeCmd += fmt.Sprintf("' | %s", cli)
 
@@ -430,17 +454,19 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	cli := buildRedisCLI(info)
+	safeKey := shellEscapeSingleQuote(req.Key)
 
 	// 先获取类型
-	typeOutput, err := sshExec(sshClient, fmt.Sprintf("%s TYPE '%s'", cli, req.Key))
+	typeOutput, err := sshExec(sshClient, fmt.Sprintf("%s TYPE '%s'", cli, safeKey))
 	if err != nil {
 		response.InternalServerError(c, "获取 key 类型失败: "+err.Error())
 		return
@@ -453,7 +479,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 	}
 
 	// 获取 TTL
-	ttlOutput, _ := sshExec(sshClient, fmt.Sprintf("%s TTL '%s'", cli, req.Key))
+	ttlOutput, _ := sshExec(sshClient, fmt.Sprintf("%s TTL '%s'", cli, safeKey))
 	ttl, _ := strconv.ParseInt(strings.TrimSpace(ttlOutput), 10, 64)
 
 	// 根据类型获取值
@@ -462,7 +488,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 
 	switch keyType {
 	case "string":
-		valueCmd = fmt.Sprintf("%s GET '%s'", cli, req.Key)
+		valueCmd = fmt.Sprintf("%s GET '%s'", cli, safeKey)
 		output, err := sshExec(sshClient, valueCmd)
 		if err != nil {
 			response.InternalServerError(c, "获取值失败: "+err.Error())
@@ -471,7 +497,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 		value = strings.TrimSpace(output)
 
 	case "list":
-		valueCmd = fmt.Sprintf("%s LRANGE '%s' 0 99", cli, req.Key)
+		valueCmd = fmt.Sprintf("%s LRANGE '%s' 0 99", cli, safeKey)
 		output, err := sshExec(sshClient, valueCmd)
 		if err != nil {
 			response.InternalServerError(c, "获取值失败: "+err.Error())
@@ -480,7 +506,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 		value = parseRedisListOutput(output)
 
 	case "set":
-		valueCmd = fmt.Sprintf("%s SMEMBERS '%s'", cli, req.Key)
+		valueCmd = fmt.Sprintf("%s SMEMBERS '%s'", cli, safeKey)
 		output, err := sshExec(sshClient, valueCmd)
 		if err != nil {
 			response.InternalServerError(c, "获取值失败: "+err.Error())
@@ -489,7 +515,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 		value = parseRedisListOutput(output)
 
 	case "zset":
-		valueCmd = fmt.Sprintf("%s ZRANGE '%s' 0 99 WITHSCORES", cli, req.Key)
+		valueCmd = fmt.Sprintf("%s ZRANGE '%s' 0 99 WITHSCORES", cli, safeKey)
 		output, err := sshExec(sshClient, valueCmd)
 		if err != nil {
 			response.InternalServerError(c, "获取值失败: "+err.Error())
@@ -498,7 +524,7 @@ func (r *RedisAPI) GetKey(c *gin.Context) {
 		value = parseRedisListOutput(output)
 
 	case "hash":
-		valueCmd = fmt.Sprintf("%s HGETALL '%s'", cli, req.Key)
+		valueCmd = fmt.Sprintf("%s HGETALL '%s'", cli, safeKey)
 		output, err := sshExec(sshClient, valueCmd)
 		if err != nil {
 			response.InternalServerError(c, "获取值失败: "+err.Error())
@@ -565,15 +591,16 @@ func (r *RedisAPI) DeleteKey(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	cli := buildRedisCLI(info)
-	output, err := sshExec(sshClient, fmt.Sprintf("%s DEL '%s'", cli, req.Key))
+	output, err := sshExec(sshClient, fmt.Sprintf("%s DEL '%s'", cli, shellEscapeSingleQuote(req.Key)))
 	if err != nil {
 		response.InternalServerError(c, "删除 key 失败: "+err.Error())
 		return
@@ -595,14 +622,23 @@ func (r *RedisAPI) SeedTestData(c *gin.Context) {
 
 	info := parseRedisParams(instance)
 
-	sshClient, _, err := connectToServer(server)
+	sshClient, sftpClient, err := connectToServer(server)
 	if err != nil {
 		response.InternalServerError(c, "SSH 连接失败: "+err.Error())
 		return
 	}
 	defer sshClient.Close()
+	defer sftpClient.Close()
 
 	cli := buildRedisCLI(info)
+
+	// 先清理已有测试 key，保证幂等（多次调用结果一致）
+	if _, err := sshExec(sshClient, fmt.Sprintf(
+		"%s DEL 'test:string:hello' 'test:string:counter' 'test:string:json' 'test:string:expiring' "+
+			"'test:list:colors' 'test:list:queue' 'test:set:tags' 'test:zset:scores' "+
+			"'test:hash:user:1' 'test:hash:config'", cli)); err != nil {
+		logger.Warnf("清理旧测试数据失败（可能不存在，忽略）: %v", err)
+	}
 
 	// 写入多种类型的测试数据
 	commands := []string{
